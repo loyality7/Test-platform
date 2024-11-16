@@ -40,6 +40,7 @@ import TestSession from '../models/testSession.model.js';
 import Test from '../models/test.model.js';
 import User from '../models/user.model.js';
 import { validateTestAccess } from '../middleware/validateTestAccess.js';
+import { validateProfile } from '../middleware/validateProfile.js';
 
 const router = express.Router();
 
@@ -1744,6 +1745,7 @@ router.patch(
 router.post(
   "/:testId/register",
   auth,
+  validateProfile,
   registerForTest
 );
 

@@ -382,16 +382,51 @@ export const getUserSubmissions = async (req, res) => {
 export const getTestSubmissions = async (req, res) => {
   try {
     const { testId } = req.params;
-    const submissions = await Promise.all([
-      MCQSubmission.find({ testId }),
-      CodingSubmission.find({ testId })
-    ]);
-    res.status(200).json({
-      mcq: submissions[0],
-      coding: submissions[1]
-    });
+    
+    // Instead of querying separate collections, query the main Submission collection
+    const submissions = await Submission.find({ 
+      test: testId,
+      $or: [
+        { 'mcqSubmission.completed': true },
+        { 'codingSubmission.completed': true }
+      ]
+    })
+    .populate('user', 'name email')
+    .lean();
+
+    // Transform the submissions into the expected format
+    const response = {
+      mcq: submissions
+        .filter(sub => sub.mcqSubmission?.completed)
+        .map(sub => ({
+          testId: sub.test,
+          userId: sub.user._id,
+          answers: sub.mcqSubmission.answers,
+          totalScore: sub.mcqSubmission.totalScore,
+          submittedAt: sub.mcqSubmission.submittedAt
+        })),
+      coding: submissions
+        .filter(sub => sub.codingSubmission?.completed)
+        .map(sub => ({
+          testId: sub.test,
+          userId: sub.user._id,
+          challenges: sub.codingSubmission.challenges,
+          totalScore: sub.codingSubmission.totalScore,
+          submittedAt: sub.codingSubmission.submittedAt
+        }))
+    };
+
+    // Add debug logging
+    console.log(`Found ${submissions.length} submissions for test ${testId}`);
+    console.log('Response:', response);
+
+    res.status(200).json(response);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching test submissions', error: error.message });
+    console.error('Error in getTestSubmissions:', error);
+    res.status(500).json({ 
+      message: 'Error fetching test submissions', 
+      error: error.message 
+    });
   }
 };
 
@@ -399,10 +434,30 @@ export const getTestSubmissions = async (req, res) => {
 export const getTestMCQSubmissions = async (req, res) => {
   try {
     const { testId } = req.params;
-    const submissions = await MCQSubmission.find({ testId });
-    res.status(200).json(submissions);
+    const submissions = await Submission.find({ 
+      test: testId,
+      'mcqSubmission.completed': true 
+    })
+    .populate('user', 'name email')
+    .lean();
+
+    const mcqSubmissions = submissions.map(sub => ({
+      testId: sub.test,
+      userId: sub.user._id,
+      userName: sub.user.name,
+      userEmail: sub.user.email,
+      answers: sub.mcqSubmission.answers,
+      totalScore: sub.mcqSubmission.totalScore,
+      submittedAt: sub.mcqSubmission.submittedAt
+    }));
+
+    res.status(200).json(mcqSubmissions);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching MCQ submissions', error: error.message });
+    console.error('Error in getTestMCQSubmissions:', error);
+    res.status(500).json({ 
+      message: 'Error fetching MCQ submissions', 
+      error: error.message 
+    });
   }
 };
 
@@ -410,10 +465,30 @@ export const getTestMCQSubmissions = async (req, res) => {
 export const getTestCodingSubmissions = async (req, res) => {
   try {
     const { testId } = req.params;
-    const submissions = await CodingSubmission.find({ testId });
-    res.status(200).json(submissions);
+    const submissions = await Submission.find({ 
+      test: testId,
+      'codingSubmission.completed': true 
+    })
+    .populate('user', 'name email')
+    .lean();
+
+    const codingSubmissions = submissions.map(sub => ({
+      testId: sub.test,
+      userId: sub.user._id,
+      userName: sub.user.name,
+      userEmail: sub.user.email,
+      challenges: sub.codingSubmission.challenges,
+      totalScore: sub.codingSubmission.totalScore,
+      submittedAt: sub.codingSubmission.submittedAt
+    }));
+
+    res.status(200).json(codingSubmissions);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching coding submissions', error: error.message });
+    console.error('Error in getTestCodingSubmissions:', error);
+    res.status(500).json({ 
+      message: 'Error fetching coding submissions', 
+      error: error.message 
+    });
   }
 };
 

@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const testSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: String,
-  vendor: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  vendor: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
   duration: Number,
   proctoring: { type: Boolean, default: false },
   instructions: String,

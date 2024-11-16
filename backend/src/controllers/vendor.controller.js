@@ -9,75 +9,103 @@ import Submission from "../models/submission.model.js";
 
 export const getVendorDashboard = async (req, res) => {
   try {
-    // Get basic stats
-    const [totalTests, activeTests, totalCandidates, pendingInvitations] = await Promise.all([
-      Test.countDocuments({ vendor: req.user._id }),
-      Test.countDocuments({ vendor: req.user._id, status: 'published' }),
-      TestResult.countDocuments({ 'test.vendor': req.user._id }).distinct('user'),
-      TestInvitation.countDocuments({ vendor: req.user._id, status: 'pending' })
-    ]);
+    // Get vendor's tests
+    const tests = await Test.find({ vendor: req.user._id });
+    const testIds = tests.map(test => test._id);
 
-    // Get test completion stats
-    const testResults = await TestResult.aggregate([
-      { $match: { 'test.vendor': req.user._id } },
-      { $group: {
-        _id: null,
-        avgScore: { $avg: '$totalScore' },
-        passCount: { $sum: { $cond: [{ $gte: ['$totalScore', 70] }, 1, 0] } },
-        failCount: { $sum: { $cond: [{ $lt: ['$totalScore', 70] }, 1, 0] } }
-      }}
-    ]);
+    // Get all completed submissions
+    const submissions = await Submission.find({
+      test: { $in: testIds },
+      status: 'completed',  // Only get completed submissions
+      $or: [
+        { 'mcqSubmission.completed': true },
+        { 'codingSubmission.completed': true }
+      ]
+    })
+    .populate('user', 'name email')
+    .populate('test', 'title passingMarks')
+    .sort({ updatedAt: -1 });
 
-    // Get recent activity
-    const recentResults = await TestResult.find({ 'test.vendor': req.user._id })
-      .sort({ completedAt: -1 })
-      .limit(5)
-      .populate('user', 'name email')
-      .populate('test', 'title');
+    // Transform submissions for recent activity
+    const recentActivity = submissions
+      .slice(0, 5)
+      .map(submission => ({
+        candidateName: submission.user.name,
+        candidateEmail: submission.user.email,
+        testTitle: submission.test.title,
+        score: submission.totalScore,
+        completedAt: submission.updatedAt
+      }));
 
-    // Get tests by difficulty distribution
-    const testsByDifficulty = await Test.aggregate([
-      { $match: { vendor: req.user._id } },
-      { $group: {
-        _id: '$difficulty',
-        count: { $sum: 1 }
-      }}
-    ]);
+    // Calculate metrics
+    const distinctUsers = [...new Set(submissions.map(sub => sub.user._id.toString()))];
+    const pendingInvitations = await TestInvitation.countDocuments({ 
+      test: { $in: testIds }, 
+      status: 'pending' 
+    });
 
-    // Format response
-    const stats = {
-      overview: {
-        totalTests,
-        activeTests,
-        totalCandidates: totalCandidates.length,
-        pendingInvitations
-      },
-      performance: testResults.length > 0 ? {
-        averageScore: Math.round(testResults[0].avgScore * 10) / 10,
-        passRate: Math.round((testResults[0].passCount / (testResults[0].passCount + testResults[0].failCount)) * 100),
-        totalAttempts: testResults[0].passCount + testResults[0].failCount
-      } : {
-        averageScore: 0,
-        passRate: 0,
-        totalAttempts: 0
-      },
-      testDistribution: testsByDifficulty.reduce((acc, curr) => {
-        acc[curr._id] = curr.count;
-        return acc;
-      }, {}),
-      recentActivity: recentResults.map(result => ({
-        candidateName: result.user.name,
-        candidateEmail: result.user.email,
-        testTitle: result.test.title,
-        score: result.totalScore,
-        completedAt: result.completedAt
-      }))
+    const overview = {
+      totalTests: tests.length,
+      activeTests: tests.filter(test => test.status === 'published').length,
+      totalCandidates: distinctUsers.length,
+      pendingInvitations
     };
 
-    res.json(stats);
+    const performance = {
+      averageScore: calculateAverageScore(submissions),
+      passRate: calculatePassRate(submissions),
+      totalAttempts: submissions.length
+    };
+
+    const testDistribution = {
+      easy: tests.filter(t => t.difficulty === 'easy').length,
+      medium: tests.filter(t => t.difficulty === 'medium').length,
+      hard: tests.filter(t => t.difficulty === 'hard').length
+    };
+
+    // Add debug logging
+    console.log('Dashboard Data:', {
+      testIds,
+      submissionCount: submissions.length,
+      distinctUserCount: distinctUsers.length,
+      overview,
+      performance,
+      testDistribution,
+      recentActivityCount: recentActivity.length
+    });
+
+    res.json({
+      overview,
+      performance,
+      testDistribution,
+      recentActivity
+    });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error in getVendorDashboard:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch dashboard data',
+      message: error.message 
+    });
   }
+};
+
+// Helper functions
+const calculateAverageScore = (submissions) => {
+  if (!submissions.length) return 0;
+  const totalScore = submissions.reduce((sum, sub) => sum + (sub.totalScore || 0), 0);
+  return (totalScore / submissions.length).toFixed(1);
+};
+
+const calculatePassRate = (submissions) => {
+  if (!submissions.length) return 0;
+  
+  const passed = submissions.filter(submission => {
+    const passingMarks = submission.test.passingMarks || 70;
+    return submission.totalScore >= passingMarks;
+  }).length;
+  
+  return ((passed / submissions.length) * 100).toFixed(1);
 };
 
 export const getVendorTests = async (req, res) => {

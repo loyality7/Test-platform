@@ -76,7 +76,14 @@ export const getMethod = async (endpoint, requiresAuth = false) => {
 
 export const postMethod = async (endpoint, body, requiresAuth = false) => {
   try {
-    const response = await fetch(`${apiUrl}${endpoint}`, {
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+    const url = `${apiUrl}/${cleanEndpoint}`;
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Posting to:', url);
+    }
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: createHeaders(requiresAuth),
       body: JSON.stringify(body),

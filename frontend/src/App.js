@@ -15,6 +15,16 @@ import Profile from './pages/profile/profile';
 import UserDashboardPage from './pages/dashboard/candidate/UserDashboard';
 import VendorDashboardPage from './pages/dashboard/vendor/VendorDashboard';
 import AdminDashboardPage from './pages/dashboard/admin/AdminDashboard';
+import Dashboard from './components/dashboard/vendor/Dashboard';
+
+// Import vendor pages
+import VendorDashboard from './components/dashboard/vendor/Dashboard';
+import VendorTests from './pages/vendor/Tests';
+import VendorAnalytics from './pages/vendor/Analytics';
+import VendorCandidates from './pages/vendor/Candidates';
+import VendorInvitations from './pages/vendor/Invitations';
+import VendorProfile from './pages/vendor/Profile';
+import VendorReports from './pages/vendor/Reports';
 
 const queryClient = new QueryClient();
 
@@ -37,7 +47,7 @@ const App = () => {
               />
               <Route 
                 path="/dashboard/user" 
-                element={<ProtectedRoute element={<UserDashboardPage />} allowedRoles={['user', 'vendor', 'admin']} />} 
+                element={<ProtectedRoute element={<UserDashboardPage />} allowedRoles={['user', 'admin']} />} 
               />
               <Route 
                 path="/dashboard/vendor" 
@@ -46,6 +56,70 @@ const App = () => {
               <Route 
                 path="/dashboard/admin" 
                 element={<ProtectedRoute element={<AdminDashboardPage />} allowedRoles={['admin']} />} 
+              />
+              <Route path="/vendor/dashboard" element={<Dashboard />} />
+              <Route 
+                path="/vendor/dashboard" 
+                element={
+                  <ProtectedRoute 
+                    element={<VendorDashboard />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
+              />
+              <Route 
+                path="/vendor/tests" 
+                element={
+                  <ProtectedRoute 
+                    element={<VendorTests />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
+              />
+              <Route 
+                path="/vendor/analytics" 
+                element={
+                  <ProtectedRoute 
+                    element={<VendorAnalytics />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
+              />
+              <Route 
+                path="/vendor/candidates" 
+                element={
+                  <ProtectedRoute 
+                    element={<VendorCandidates />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
+              />
+              <Route 
+                path="/vendor/invitations" 
+                element={
+                  <ProtectedRoute 
+                    element={<VendorInvitations />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
+              />
+              <Route 
+                path="/vendor/profile" 
+                element={
+                  <ProtectedRoute 
+                    element={<VendorProfile />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
+              />
+              <Route 
+                path="/vendor/reports" 
+                element={
+                  <ProtectedRoute 
+                    element={<VendorReports />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
               />
             </Routes>
           </div>

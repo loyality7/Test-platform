@@ -53,21 +53,28 @@ export const AuthProvider = ({ children }) => {
       dispatch({ type: 'LOGIN_START' });
       const response = await postMethod('auth/login', credentials);
       
-      if (!response.user || !response.token) {
+      if (!response.success || !response.data) {
         throw new Error(response.error || 'Login failed');
       }
 
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      const { token, user } = response.data;
+
+      if (!user || !token) {
+        throw new Error('Invalid response format');
+      }
+
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
 
       dispatch({ 
         type: 'LOGIN_SUCCESS', 
         payload: {               
-          user: response.user,
-          token: response.token
+          user,
+          token
         } 
       });
-      return response;
+      
+      return { user, token };
       
     } catch (error) {
       dispatch({ type: 'LOGIN_FAILURE', payload: error.message });
