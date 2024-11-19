@@ -168,7 +168,7 @@ router.get("/dashboard", auth, checkRole(["vendor"]), getVendorDashboard);
  *       403:
  *         $ref: '#/components/responses/VendorNotApproved'
  */
-router.get("/tests", auth, checkRole(["vendor"]), checkVendorApproval, getVendorTests);
+router.get("/tests", auth, checkRole(["vendor"]), getVendorTests);
 
 /**
  * @swagger

@@ -1,4 +1,4 @@
-import apiService from '../apiService';
+import apiService from '../../helpers/apiService';
 
 const testAPIService = {
   // Test Management

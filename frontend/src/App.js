@@ -25,13 +25,21 @@ import VendorCandidates from './pages/vendor/Candidates';
 import VendorInvitations from './pages/vendor/Invitations';
 import VendorProfile from './pages/vendor/Profile';
 import VendorReports from './pages/vendor/Reports';
-
+import CreateTest from './components/test/CreateTest';
+import SharedTest from './pages/test/SharedTest';
+import TakeTest from './pages/test/TakeTest';
+import TestCompleted from './pages/test/TestCompleted';
+import Proctoring from './pages/test/proctering';
 const queryClient = new QueryClient();
 
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
+      <Router
+        future={{
+          v7_relativeSplatPath: true
+        }}
+      >
         <AuthProvider>
           <Header />
           <div className="pt-16">
@@ -43,6 +51,7 @@ const App = () => {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route 
                 path="/profile" 
+                
                 element={<ProtectedRoute element={<Profile />} allowedRoles={['user', 'vendor', 'admin']} />} 
               />
               <Route 
@@ -72,6 +81,15 @@ const App = () => {
                 element={
                   <ProtectedRoute 
                     element={<VendorTests />} 
+                    allowedRoles={['vendor', 'admin']} 
+                  />
+                } 
+              />
+              <Route 
+                path="/vendor/tests/create" 
+                element={
+                  <ProtectedRoute 
+                    element={<CreateTest />} 
                     allowedRoles={['vendor', 'admin']} 
                   />
                 } 
@@ -121,6 +139,10 @@ const App = () => {
                   />
                 } 
               />
+              <Route path="/test/shared/:uuid" element={<SharedTest />} />
+              <Route path="/test/take/:uuid" element={<TakeTest />} />
+              <Route path="/test/completed" element={<TestCompleted />} />
+              <Route path="/test/proctoring/:testId" element={<Proctoring />} />
             </Routes>
           </div>
         </AuthProvider>

@@ -110,59 +110,37 @@ const calculatePassRate = (submissions) => {
 
 export const getVendorTests = async (req, res) => {
   try {
-    console.log('Vendor ID:', req.user._id); // Debug log
-
-    // Verify the user object
-    if (!req.user || !req.user._id) {
-      console.log('No user found in request'); // Debug log
-      return res.status(401).json({ 
-        error: 'User not authenticated properly'
-      });
-    }
-
-    // Remove the vendor check since we're using the user ID directly
-    console.log('Searching for tests with user ID:', req.user._id); // Debug log
-    
+    // Get tests directly using the user ID from auth
     const tests = await Test.find({ 
-      vendor: req.user._id  // This should match the user ID who created the tests
+      vendor: req.user._id
     })
-    .select('title description difficulty duration passingScore status createdAt updatedAt')
+    .select('title description difficulty duration status createdAt updatedAt totalMarks passingMarks category')
     .sort({ createdAt: -1 });
 
-    console.log('Found tests:', tests.length); // Debug log
-
-    // If no tests found, return empty array with message
-    if (!tests || tests.length === 0) {
-      console.log('No tests found'); // Debug log
-      return res.json({
-        message: 'No tests found',
-        tests: []
-      });
-    }
-
-    // Format the response
-    const formattedTests = tests.map(test => ({
-      _id: test._id,
-      title: test.title,
-      description: test.description,
-      difficulty: test.difficulty,
-      duration: test.duration,
-      passingScore: test.passingScore,
-      status: test.status,
-      createdAt: test.createdAt,
-      updatedAt: test.updatedAt
-    }));
-
+    // Return formatted response
     res.json({
       message: 'Tests retrieved successfully',
-      count: formattedTests.length,
-      tests: formattedTests
+      count: tests.length,
+      tests: tests.map(test => ({
+        _id: test._id,
+        title: test.title,
+        description: test.description,
+        difficulty: test.difficulty,
+        duration: test.duration,
+        status: test.status,
+        totalMarks: test.totalMarks,
+        passingMarks: test.passingMarks,
+        category: test.category,
+        createdAt: test.createdAt,
+        updatedAt: test.updatedAt
+      }))
     });
+
   } catch (error) {
     console.error('Error in getVendorTests:', error);
     res.status(500).json({ 
       error: 'Failed to fetch tests',
-      details: error.message 
+      message: error.message 
     });
   }
 };

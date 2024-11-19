@@ -31,7 +31,11 @@ const testRegistrationSchema = new mongoose.Schema({
     required: true
   },
   startedAt: Date,
-  completedAt: Date
+  completedAt: Date,
+  isVendorAttempt: {
+    type: Boolean,
+    default: false
+  }
 }, {
   timestamps: true
 });

@@ -66,13 +66,8 @@ const testSchema = new mongoose.Schema({
   codingChallenges: [{
     title: { type: String, required: true },
     description: { type: String, required: true },
+    problemStatement: { type: String, required: true },
     constraints: { type: String, required: true },
-    testCases: [{
-      input: { type: String, required: true },
-      output: { type: String, required: true },
-      hidden: { type: Boolean, default: false },
-      explanation: String
-    }],
     allowedLanguages: {
       type: [String],
       required: true,
@@ -84,13 +79,25 @@ const testSchema = new mongoose.Schema({
         message: 'At least one programming language must be allowed'
       }
     },
+    languageImplementations: {
+      type: Map,
+      of: {
+        visibleCode: String,
+        invisibleCode: String
+      },
+      required: true
+    },
+    testCases: [{
+      input: { type: String, required: true },
+      output: { type: String, required: true },
+      isVisible: { type: Boolean, default: true },
+      explanation: String
+    }],
     marks: { type: Number, required: true },
     timeLimit: { type: Number, required: true },
     memoryLimit: { type: Number, required: true },
-    sampleCode: String,
     difficulty: { type: String, enum: ['easy', 'medium', 'hard'], required: true },
-    tags: [String],
-    constraints: String
+    tags: [String]
   }],
   uuid: {
     type: String,
@@ -112,7 +119,7 @@ const testSchema = new mongoose.Schema({
     },
     userLimit: {
       type: Number,
-      min: 0, // 0 means unlimited
+      min: 0, 
       default: 0
     },
     allowedUsers: [{

@@ -31,7 +31,9 @@ import {
   updateTestVisibility,
   registerForTest,
   updateSessionStatus,
-  getUserSubmissions
+  getUserSubmissions,
+  verifyTestByUuid,
+  checkTestRegistration
 } from "../controllers/test.controller.js";
 import { auth } from "../middleware/auth.js";
 import { checkRole } from "../middleware/checkRole.js";
@@ -41,17 +43,15 @@ import Test from '../models/test.model.js';
 import User from '../models/user.model.js';
 import { validateTestAccess } from '../middleware/validateTestAccess.js';
 import { validateProfile } from '../middleware/validateProfile.js';
+import jwt from 'jsonwebtoken';
 
 const router = express.Router();
 
-/**
- * @swagger
- * /api/tests/public:
- *   get:
- *     tags: [Tests]
- *     summary: Get all public tests
- */
-router.get('/public', getPublicTests);
+// Public routes MUST be defined BEFORE the auth middleware
+router.post("/verify/:uuid", verifyTestByUuid);
+
+// Protected routes below this line
+router.use(auth);
 
 /**
  * @swagger
@@ -165,50 +165,18 @@ router.get("/:id", auth, getTestById);
  *             properties:
  *               title:
  *                 type: string
- *                 description: Test title
  *               description:
  *                 type: string
- *                 description: Test description
  *               duration:
  *                 type: number
- *                 description: Test duration in minutes
  *               proctoring:
  *                 type: boolean
- *                 description: Whether proctoring is enabled
  *               instructions:
  *                 type: string
- *                 description: Test instructions
- *               type:
- *                 type: string
- *                 enum: [assessment, practice]
- *                 default: assessment
- *               category:
- *                 type: string
- *                 description: Test category (e.g., web-development, algorithms)
- *               difficulty:
- *                 type: string
- *                 enum: [beginner, intermediate, advanced]
- *               accessControl:
- *                 type: object
- *                 properties:
- *                   type:
- *                     type: string
- *                     enum: [public, private]
- *                     default: private
- *                   userLimit:
- *                     type: number
- *                     default: 0
  *               mcqs:
  *                 type: array
  *                 items:
  *                   type: object
- *                   required:
- *                     - question
- *                     - options
- *                     - correctOptions
- *                     - answerType
- *                     - marks
- *                     - difficulty
  *                   properties:
  *                     question:
  *                       type: string
@@ -220,16 +188,8 @@ router.get("/:id", auth, getTestById);
  *                       type: array
  *                       items:
  *                         type: number
- *                     answerType:
- *                       type: string
- *                       enum: [single, multiple]
  *                     marks:
  *                       type: number
- *                     difficulty:
- *                       type: string
- *                       enum: [easy, medium, hard]
- *                     explanation:
- *                       type: string
  *               codingChallenges:
  *                 type: array
  *                 items:
@@ -237,26 +197,52 @@ router.get("/:id", auth, getTestById);
  *                   required:
  *                     - title
  *                     - description
+ *                     - problemStatement
  *                     - constraints
- *                     - language
+ *                     - allowedLanguages
+ *                     - languageImplementations
  *                     - marks
  *                     - timeLimit
  *                     - memoryLimit
  *                     - difficulty
- *                     - testCases
  *                   properties:
  *                     title:
  *                       type: string
  *                     description:
  *                       type: string
- *                     constraints:
+ *                     problemStatement:
  *                       type: string
- *                     language:
+ *                     constraints:
  *                       type: string
  *                     allowedLanguages:
  *                       type: array
  *                       items:
  *                         type: string
+ *                     languageImplementations:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: object
+ *                         required:
+ *                           - visibleCode
+ *                           - invisibleCode
+ *                         properties:
+ *                           visibleCode:
+ *                             type: string
+ *                           invisibleCode:
+ *                             type: string
+ *                     testCases:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           input:
+ *                             type: string
+ *                           output:
+ *                             type: string
+ *                           isVisible:
+ *                             type: boolean
+ *                           explanation:
+ *                             type: string
  *                     marks:
  *                       type: number
  *                     timeLimit:
@@ -266,23 +252,10 @@ router.get("/:id", auth, getTestById);
  *                     difficulty:
  *                       type: string
  *                       enum: [easy, medium, hard]
- *                     testCases:
+ *                     tags:
  *                       type: array
  *                       items:
- *                         type: object
- *                         required:
- *                           - input
- *                           - output
- *                         properties:
- *                           input:
- *                             type: string
- *                           output:
- *                             type: string
- *                           hidden:
- *                             type: boolean
- *                             default: false
- *                           explanation:
- *                             type: string
+ *                         type: string
  *     responses:
  *       201:
  *         description: Test created successfully
@@ -573,7 +546,7 @@ router.post("/:testId/coding-challenges", auth, checkRole(["vendor", "admin"]), 
  * @swagger
  * /api/tests/{testId}/coding/{challengeId}:
  *   put:
- *     summary: Update a specific coding challenge in a test
+ *     summary: Update a coding challenge
  *     tags: [Tests]
  *     security:
  *       - bearerAuth: []
@@ -583,13 +556,6 @@ router.post("/:testId/coding-challenges", auth, checkRole(["vendor", "admin"]), 
  *         required: true
  *         schema:
  *           type: string
- *         description: ID of the test
- *       - in: path
- *         name: challengeId
- *         required: true
- *         schema:
- *           type: string
- *         description: ID of the coding challenge to update
  *     requestBody:
  *       required: true
  *       content:
@@ -599,29 +565,28 @@ router.post("/:testId/coding-challenges", auth, checkRole(["vendor", "admin"]), 
  *             properties:
  *               title:
  *                 type: string
- *                 description: Challenge title
  *               description:
  *                 type: string
- *                 description: Challenge description
+ *               problemStatement:
+ *                 type: string
  *               constraints:
  *                 type: string
- *                 description: Challenge constraints
- *               language:
- *                 type: string
- *                 description: Programming language
- *               marks:
- *                 type: number
- *                 description: Points for this challenge
- *               timeLimit:
- *                 type: number
- *                 description: Time limit in seconds
- *               memoryLimit:
- *                 type: number
- *                 description: Memory limit in MB
- *               difficulty:
- *                 type: string
- *                 enum: [easy, medium, hard]
- *                 description: Difficulty level
+ *               allowedLanguages:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               languageImplementations:
+ *                 type: object
+ *                 additionalProperties:
+ *                   type: object
+ *                   required:
+ *                     - visibleCode
+ *                     - invisibleCode
+ *                   properties:
+ *                     visibleCode:
+ *                       type: string
+ *                     invisibleCode:
+ *                       type: string
  *               testCases:
  *                 type: array
  *                 items:
@@ -629,22 +594,21 @@ router.post("/:testId/coding-challenges", auth, checkRole(["vendor", "admin"]), 
  *                   properties:
  *                     input:
  *                       type: string
- *                       description: Test case input
  *                     output:
  *                       type: string
- *                       description: Expected output
- *                     hidden:
+ *                     isVisible:
  *                       type: boolean
- *                       description: Whether this is a hidden test case
+ *                     explanation:
+ *                       type: string
  *     responses:
  *       200:
  *         description: Coding challenge updated successfully
  *       400:
- *         description: Invalid input data
+ *         description: Invalid input
  *       403:
  *         description: Not authorized
  *       404:
- *         description: Test or coding challenge not found
+ *         description: Test or challenge not found
  */
 router.put("/:testId/coding/:challengeId", auth, checkRole(["vendor", "admin"]), updateCodingChallenge);
 
@@ -899,7 +863,39 @@ router.get("/:testId/invitations", auth, checkRole(["vendor", "admin"]), getTest
  *                 shareableLink:
  *                   type: string
  */
-router.get("/:uuid/take", getTestByUuid);
+router.get("/:uuid/take", async (req, res) => {
+  try {
+    const test = await Test.findOne({ uuid: req.params.uuid })
+      .populate('mcqs')
+      .populate('codingChallenges');
+    
+    if (!test) {
+      return res.status(404).json({ 
+        message: "Test not found",
+        uuid: req.params.uuid 
+      });
+    }
+
+    res.json({
+      message: "Test loaded successfully",
+      data: {
+        title: test.title,
+        description: test.description,
+        duration: test.duration,
+        totalMarks: test.totalMarks,
+        mcqs: test.mcqs,
+        codingChallenges: test.codingChallenges
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in getTestByUuid:', error);
+    res.status(500).json({ 
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+});
 
 /**
  * @swagger
@@ -1806,6 +1802,226 @@ router.post(
  *                       solutions: { type: array }
  */
 router.get('/submissions/user/:userId', auth, getUserSubmissions);
+
+// Public route for verifying test by UUID
+router.post("/verify/:uuid", verifyTestByUuid);
+
+// Then add the auth middleware for protected routes
+router.use(auth);
+
+/**
+ * @swagger
+ * /api/tests/verify/{uuid}:
+ *   post:
+ *     summary: Verify a test by UUID (Public endpoint)
+ *     tags: [Tests]
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: UUID of the test
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Access token for private tests (optional)
+ *     responses:
+ *       200:
+ *         description: Test details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 test:
+ *                   type: object
+ *                   properties:
+ *                     uuid:
+ *                       type: string
+ *                     title:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     duration:
+ *                       type: number
+ *                     type:
+ *                       type: string
+ *                     category:
+ *                       type: string
+ *                     difficulty:
+ *                       type: string
+ *                     totalMarks:
+ *                       type: number
+ *                     vendor:
+ *                       type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *       404:
+ *         description: Test not found
+ *       403:
+ *         description: Invalid access token or test not available
+ */
+router.post("/verify/:uuid", verifyTestByUuid);
+
+/**
+ * @swagger
+ * /api/tests/register/{uuid}:
+ *   post:
+ *     summary: Register for a test
+ *     tags: [Tests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: UUID of the test
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Access token for private tests (optional)
+ *     responses:
+ *       200:
+ *         description: Successfully registered for test
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 sessionId:
+ *                   type: string
+ *                   description: ID of the created test session
+ *       401:
+ *         description: Unauthorized - User not logged in
+ *       403:
+ *         description: Invalid access token or test not available
+ *       404:
+ *         description: Test not found
+ */
+router.post("/register/:uuid", auth, registerForTest);
+
+/**
+ * @swagger
+ * /api/tests/{uuid}/take:
+ *   get:
+ *     summary: Get test details for taking the test
+ *     tags: [Tests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: UUID of the test
+ *     responses:
+ *       200:
+ *         description: Test details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     title:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     duration:
+ *                       type: number
+ *                     totalMarks:
+ *                       type: number
+ *                     mcqs:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           question:
+ *                             type: string
+ *                           options:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *                           marks:
+ *                             type: number
+ *                     codingChallenges:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           title:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                           problemStatement:
+ *                             type: string
+ *                           constraints:
+ *                             type: string
+ *                           marks:
+ *                             type: number
+ *       401:
+ *         description: Unauthorized - User not logged in
+ *       403:
+ *         description: Not authorized to take this test
+ *       404:
+ *         description: Test not found
+ */
+router.get("/:uuid/take", auth, getTestByUuid);
+
+/**
+ * @swagger
+ * /api/tests/{uuid}/check-registration:
+ *   post:
+ *     summary: Check if user can register for a test
+ *     tags: [Tests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: UUID of the test
+ *     responses:
+ *       200:
+ *         description: User can register for test
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 canRegister:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       403:
+ *         description: User cannot register for test
+ *       404:
+ *         description: Test not found
+ */
+router.post("/:uuid/check-registration", auth, checkTestRegistration);
 
 export default router;
 

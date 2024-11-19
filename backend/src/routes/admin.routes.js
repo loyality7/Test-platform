@@ -192,31 +192,60 @@ router.get('/users', isAdmin, async (req, res) => {
 router.get('/vendors', isAdmin, async (req, res) => {
   try {
     // Query users with vendor role
-    const vendors = await User.find({ role: 'vendor' })
+    const vendorUsers = await User.find({ role: 'vendor' })
       .select('-password')
       .sort({ createdAt: -1 });
+
+    // Get all vendor emails
+    const vendorEmails = vendorUsers.map(user => user.email);
+
+    // Get vendor statuses from Vendor collection
+    const vendorStatuses = await Vendor.find({
+      email: { $in: vendorEmails }
+    }).select('email status approvedAt approvedBy rejectedAt rejectedBy rejectionReason');
+
+    // Map vendor statuses to users
+    const vendors = vendorUsers.map(user => {
+      const vendorInfo = vendorStatuses.find(v => v.email === user.email);
+      return {
+        ...user.toObject(),
+        status: vendorInfo?.status || 'pending',
+        approvedAt: vendorInfo?.approvedAt,
+        approvedBy: vendorInfo?.approvedBy,
+        rejectedAt: vendorInfo?.rejectedAt,
+        rejectedBy: vendorInfo?.rejectedBy,
+        rejectionReason: vendorInfo?.rejectionReason
+      };
+    });
 
     // Add a message if no vendors found
     if (!vendors.length) {
       return res.status(200).json({
         message: "No vendors found in the system",
         vendors: [],
-        count: 0
+        count: 0,
+        statusSummary: {
+          total: 0,
+          pending: 0,
+          approved: 0,
+          rejected: 0
+        }
       });
     }
 
-    // Return vendors with count
+    // Return vendors with count and status summary
     res.json({
       vendors,
       count: vendors.length,
       statusSummary: {
         total: vendors.length,
-        pending: vendors.filter(v => v.status === 'pending').length,
+        pending: vendors.filter(v => !v.status || v.status === 'pending').length,
         approved: vendors.filter(v => v.status === 'approved').length,
         rejected: vendors.filter(v => v.status === 'rejected').length
       }
     });
   } catch (error) {
+    console.error('Error fetching vendors:', error);
     res.status(500).json({ 
       message: "Error fetching vendors", 
       error: error.message 
@@ -382,31 +411,55 @@ router.delete('/users/:userId', isAdmin, async (req, res) => {
  */
 router.post('/vendors/approve/:vendorId', isAdmin, async (req, res) => {
   try {
-    const vendor = await Vendor.findByIdAndUpdate(
-      req.params.vendorId,
+    // First find the vendor user account
+    const vendorUser = await User.findById(req.params.vendorId);
+    if (!vendorUser) {
+      return res.status(404).json({ message: 'Vendor user not found' });
+    }
+
+    // Check if vendor record exists, if not create one
+    let vendor = await Vendor.findOne({ email: vendorUser.email });
+    if (!vendor) {
+      // Create new vendor record
+      vendor = await Vendor.create({
+        name: vendorUser.name,
+        email: vendorUser.email,
+        company: vendorUser.company || vendorUser.name, // Fallback to name if company not set
+        status: 'pending'
+      });
+    }
+
+    // Update vendor status
+    vendor = await Vendor.findByIdAndUpdate(
+      vendor._id,
       { 
         $set: { 
           status: 'approved', 
           approvedAt: new Date(),
-          approvedBy: req.user._id  // Assuming req.user is set by auth middleware
+          approvedBy: req.user._id
         } 
       },
       { new: true }
     );
 
-    if (!vendor) {
-      return res.status(404).json({ message: 'Vendor not found' });
-    }
-
-    // Find the associated user account and update their role
-    await User.findOneAndUpdate(
-      { email: vendor.email },
-      { $set: { role: 'vendor' } }
+    // Update user role
+    await User.findByIdAndUpdate(
+      vendorUser._id,
+      { 
+        $set: { 
+          role: 'vendor',
+          isActive: true
+        } 
+      }
     );
 
     res.json(vendor);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Vendor approval error:', error);
+    res.status(500).json({ 
+      message: 'Error approving vendor',
+      error: error.message 
+    });
   }
 });
 
@@ -1515,47 +1568,55 @@ router.get('/vendors/pending', isAdmin, async (req, res) => {
  */
 router.post('/vendors/approve/:vendorId', isAdmin, async (req, res) => {
   try {
-    // Find the vendor
-    const vendor = await Vendor.findById(req.params.vendorId);
-    if (!vendor) {
-      return res.status(404).json({ message: 'Vendor not found' });
+    // First find the vendor user account
+    const vendorUser = await User.findById(req.params.vendorId);
+    if (!vendorUser) {
+      return res.status(404).json({ message: 'Vendor user not found' });
     }
 
-    // Check if vendor is already approved or rejected
-    if (vendor.status === 'approved') {
-      return res.status(400).json({ message: 'Vendor is already approved' });
-    }
-    if (vendor.status === 'rejected') {
-      return res.status(400).json({ message: 'Cannot approve a rejected vendor' });
+    // Check if vendor record exists, if not create one
+    let vendor = await Vendor.findOne({ email: vendorUser.email });
+    if (!vendor) {
+      // Create new vendor record
+      vendor = await Vendor.create({
+        name: vendorUser.name,
+        email: vendorUser.email,
+        company: vendorUser.company || vendorUser.name, // Fallback to name if company not set
+        status: 'pending'
+      });
     }
 
     // Update vendor status
-    vendor.status = 'approved';
-    vendor.approvedAt = new Date();
-    vendor.approvedBy = req.user._id;
-    vendor.rejectedAt = null;
-    vendor.rejectedBy = null;
-    vendor.rejectionReason = null;
+    vendor = await Vendor.findByIdAndUpdate(
+      vendor._id,
+      { 
+        $set: { 
+          status: 'approved', 
+          approvedAt: new Date(),
+          approvedBy: req.user._id
+        } 
+      },
+      { new: true }
+    );
 
-    await vendor.save();
-
-    // Update associated user account
-    await User.findOneAndUpdate(
-      { email: vendor.email },
+    // Update user role
+    await User.findByIdAndUpdate(
+      vendorUser._id,
       { 
         $set: { 
           role: 'vendor',
-          isApproved: true
+          isActive: true
         } 
       }
     );
 
-    // Populate approver details
-    await vendor.populate('approvedBy', 'name email');
-
     res.json(vendor);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Vendor approval error:', error);
+    res.status(500).json({ 
+      message: 'Error approving vendor',
+      error: error.message 
+    });
   }
 });
 

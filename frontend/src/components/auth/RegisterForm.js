@@ -25,19 +25,31 @@ const RegisterForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     
     try {
       const response = await postMethod('auth/register', formData);
       
-      if (response.token && response.user) {
+      if (response.success) {
         console.log('Registration successful');
         navigate('/login');
       } else {
-        setError(response.error || 'Registration failed');
+        if (response.error?.includes('E11000 duplicate key error') && 
+            response.error?.includes('email')) {
+          setError('This email address is already registered. Please use a different email or try logging in.');
+        } else {
+          setError(response.message || response.error || 'Registration failed. Please check your input.');
+        }
       }
     } catch (error) {
       console.error('Error:', error);
-      setError('Registration failed. Please try again.');
+      if (error.status === 500) {
+        setError('Server error occurred. Please try again later.');
+      } else if (error.message) {
+        setError(error.message);
+      } else {
+        setError('Registration failed. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }

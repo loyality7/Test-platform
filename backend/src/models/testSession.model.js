@@ -52,7 +52,11 @@ const testSessionSchema = new mongoose.Schema({
       type: Number,
       default: 0
     }
-  }]
+  }],
+  isVendorAttempt: {
+    type: Boolean,
+    default: false
+  }
 }, {
   timestamps: true
 });

@@ -15,7 +15,7 @@ export const createTest = async (req, res) => {
       duration, 
       proctoring, 
       instructions,
-      type = 'assessment', // 'assessment' or 'practice'
+      type = 'assessment',
       category,
       difficulty,
       accessControl = { type: 'private' },
@@ -38,22 +38,26 @@ export const createTest = async (req, res) => {
           error: "Each MCQ must have question, options, correctOptions, answerType, marks, and difficulty"
         });
       }
-
-      if (mcq.answerType === 'single' && mcq.correctOptions.length !== 1) {
-        return res.status(400).json({
-          error: "Single answer questions must have exactly one correct option"
-        });
-      }
     }
 
-    // Validate coding challenges if provided
+    // Validate coding challenges
     for (const challenge of codingChallenges) {
-      if (!challenge.title || !challenge.description || !challenge.constraints || 
-          !challenge.language || !challenge.marks || !challenge.timeLimit || 
-          !challenge.memoryLimit || !challenge.difficulty) {
+      if (!challenge.title || !challenge.description || !challenge.problemStatement || 
+          !challenge.constraints || !challenge.allowedLanguages || 
+          !challenge.languageImplementations || !challenge.marks || 
+          !challenge.timeLimit || !challenge.memoryLimit || !challenge.difficulty) {
         return res.status(400).json({
-          error: "Each coding challenge must have title, description, constraints, language, marks, timeLimit, memoryLimit, and difficulty"
+          error: "Missing required fields in coding challenge"
         });
+      }
+
+      // Validate language implementations
+      for (const [lang, impl] of Object.entries(challenge.languageImplementations)) {
+        if (!impl.visibleCode || !impl.invisibleCode) {
+          return res.status(400).json({
+            error: `Both visibleCode and invisibleCode are required for language: ${lang}`
+          });
+        }
       }
 
       // Validate test cases if provided
@@ -73,7 +77,7 @@ export const createTest = async (req, res) => {
     const totalCodingMarks = codingChallenges.reduce((sum, challenge) => sum + challenge.marks, 0);
     const totalMarks = totalMcqMarks + totalCodingMarks;
 
-    // Create test with all components
+    // Create test
     const test = await Test.create({
       title,
       description,
@@ -86,13 +90,13 @@ export const createTest = async (req, res) => {
       difficulty,
       status: 'draft',
       totalMarks,
-      passingMarks: Math.ceil(totalMarks * 0.4), // 40% passing marks
+      passingMarks: Math.ceil(totalMarks * 0.4),
       timeLimit: duration,
       mcqs,
       codingChallenges,
       accessControl,
-      uuid: uuidv4(), // Generate UUID for public access
-      sharingToken: crypto.randomBytes(32).toString('hex') // Generate sharing token
+      uuid: uuidv4(),
+      sharingToken: crypto.randomBytes(32).toString('hex')
     });
 
     res.status(201).json(test);
@@ -269,17 +273,15 @@ export const getTestById = async (req, res) => {
 export const updateTest = async (req, res) => {
   try {
     const test = await Test.findById(req.params.id);
-    
     if (!test) {
       return res.status(404).json({ error: "Test not found" });
     }
 
-    // Check if user owns this test or is admin
+    // Check authorization
     if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: "Not authorized to update this test" });
     }
 
-    // Extract updateable fields from request body
     const {
       title,
       description,
@@ -293,7 +295,7 @@ export const updateTest = async (req, res) => {
       totalMarks
     } = req.body;
 
-    // Build update object with only provided fields
+    // Build update object
     const updateData = {};
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
@@ -304,69 +306,60 @@ export const updateTest = async (req, res) => {
     if (timeLimit !== undefined) updateData.timeLimit = timeLimit;
     if (totalMarks !== undefined) updateData.totalMarks = totalMarks;
 
+    // Validate and update MCQs
     if (mcqs !== undefined) {
-      // Validate MCQs if provided
       for (const mcq of mcqs) {
         if (!mcq.question || !mcq.options || !mcq.correctOptions || 
             !mcq.answerType || !mcq.marks || !mcq.difficulty) {
           return res.status(400).json({
-            error: "Each MCQ must have question, options, correctOptions, answerType, marks, and difficulty"
-          });
-        }
-
-        if (mcq.answerType === 'single' && mcq.correctOptions.length !== 1) {
-          return res.status(400).json({
-            error: "Single answer questions must have exactly one correct option"
+            error: "Invalid MCQ format"
           });
         }
       }
       updateData.mcqs = mcqs;
     }
 
+    // Validate and update coding challenges
     if (codingChallenges !== undefined) {
-      // Validate coding challenges if provided
       for (const challenge of codingChallenges) {
-        if (!challenge.title || !challenge.description || !challenge.constraints || 
-            !challenge.language || !challenge.marks || !challenge.timeLimit || 
-            !challenge.memoryLimit || !challenge.difficulty) {
+        if (!challenge.title || !challenge.description || !challenge.problemStatement || 
+            !challenge.constraints || !challenge.allowedLanguages || 
+            !challenge.languageImplementations || !challenge.marks || 
+            !challenge.timeLimit || !challenge.memoryLimit || !challenge.difficulty) {
           return res.status(400).json({
-            error: "Each coding challenge must have title, description, constraints, language, marks, timeLimit, memoryLimit, and difficulty"
+            error: "Invalid coding challenge format"
           });
         }
 
-        // Validate test cases if provided
-        if (challenge.testCases) {
-          for (const testCase of challenge.testCases) {
-            if (!testCase.input || !testCase.output) {
-              return res.status(400).json({
-                error: "Each test case must have input and output"
-              });
-            }
+        // Validate language implementations
+        for (const [lang, impl] of Object.entries(challenge.languageImplementations)) {
+          if (!impl.visibleCode || !impl.invisibleCode) {
+            return res.status(400).json({
+              error: `Both visibleCode and invisibleCode are required for language: ${lang}`
+            });
           }
         }
       }
       updateData.codingChallenges = codingChallenges;
     }
 
-    // Calculate total marks if not provided but MCQs or coding challenges are updated
-    if (totalMarks === undefined && (mcqs !== undefined || codingChallenges !== undefined)) {
-      const mcqMarks = (mcqs || test.mcqs).reduce((sum, mcq) => sum + mcq.marks, 0);
-      const codingMarks = (codingChallenges || test.codingChallenges).reduce((sum, challenge) => sum + challenge.marks, 0);
-      updateData.totalMarks = mcqMarks + codingMarks;
+    // Update test and recalculate total marks if necessary
+    if (mcqs || codingChallenges) {
+      const totalMcqMarks = (mcqs || test.mcqs).reduce((sum, mcq) => sum + mcq.marks, 0);
+      const totalCodingMarks = (codingChallenges || test.codingChallenges)
+        .reduce((sum, challenge) => sum + challenge.marks, 0);
+      updateData.totalMarks = totalMcqMarks + totalCodingMarks;
+      updateData.passingMarks = Math.ceil(updateData.totalMarks * 0.4);
     }
 
-    // Update the test
     const updatedTest = await Test.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
-      { new: true, runValidators: true }
-    ).populate('vendor', 'name email');
+      { new: true }
+    );
 
     res.json(updatedTest);
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ error: "Invalid test ID format" });
-    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -705,28 +698,53 @@ export const updateCodingChallenge = async (req, res) => {
       return res.status(404).json({ error: "Coding challenge not found" });
     }
 
-    // Validate the updated challenge data
-    const updatedChallenge = { 
-      ...test.codingChallenges[challengeIndex].toObject(), 
-      ...req.body 
-    };
+    const { 
+      title, 
+      description, 
+      problemStatement,
+      constraints,
+      allowedLanguages,
+      languageImplementations,
+      testCases,
+      marks,
+      timeLimit,
+      memoryLimit,
+      difficulty,
+      tags 
+    } = req.body;
 
-    // Validate test cases if they're being updated
-    if (updatedChallenge.testCases) {
-      for (const testCase of updatedChallenge.testCases) {
-        if (!testCase.input || !testCase.output) {
+    // Validate language implementations if provided
+    if (languageImplementations) {
+      for (const [lang, impl] of Object.entries(languageImplementations)) {
+        if (!impl.visibleCode || !impl.invisibleCode) {
           return res.status(400).json({
-            error: "Each test case must have input and output"
+            error: `Both visibleCode and invisibleCode are required for language: ${lang}`
           });
         }
       }
     }
 
-    // Update only the provided fields
+    // Update the challenge with new data
+    const updatedChallenge = {
+      ...test.codingChallenges[challengeIndex].toObject(),
+      ...(title && { title }),
+      ...(description && { description }),
+      ...(problemStatement && { problemStatement }),
+      ...(constraints && { constraints }),
+      ...(allowedLanguages && { allowedLanguages }),
+      ...(languageImplementations && { languageImplementations }),
+      ...(testCases && { testCases }),
+      ...(marks && { marks }),
+      ...(timeLimit && { timeLimit }),
+      ...(memoryLimit && { memoryLimit }),
+      ...(difficulty && { difficulty }),
+      ...(tags && { tags })
+    };
+
     test.codingChallenges[challengeIndex] = updatedChallenge;
     
     // Recalculate total marks if marks were updated
-    if (req.body.marks) {
+    if (marks) {
       test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0) +
                        test.codingChallenges.reduce((sum, ch) => sum + ch.marks, 0);
       test.passingMarks = Math.ceil(test.totalMarks * 0.4);
@@ -795,21 +813,14 @@ export const publishTest = async (req, res) => {
       });
     }
 
-    // Ensure all coding challenges have allowed languages
-    test.codingChallenges = test.codingChallenges.map(challenge => ({
-      ...challenge.toObject(),
-      allowedLanguages: challenge.allowedLanguages || ['javascript', 'python', 'java']
-    }));
-
     // Update test status and add publishing details
     test.status = 'published';
     test.publishedAt = new Date();
-    test.sharingToken = crypto.randomBytes(32).toString('hex');
 
     await test.save();
 
-    // Generate shareable link
-    const shareableLink = `${process.env.FRONTEND_URL}/test/take/${test._id}?token=${test.sharingToken}`;
+    // Generate shareable link with just the UUID
+    const shareableLink = `${process.env.FRONTEND_URL}/test/shared/${test.uuid}`;
 
     res.json({
       message: "Test published successfully",
@@ -817,7 +828,7 @@ export const publishTest = async (req, res) => {
         _id: test._id,
         title: test.title,
         publishedAt: test.publishedAt,
-        sharingToken: test.sharingToken
+        accessControl: test.accessControl?.type || 'private'
       },
       shareableLink
     });
@@ -1510,25 +1521,16 @@ export const updateTestVisibility = async (req, res) => {
       });
     }
 
-    // Use findOneAndUpdate to avoid validation issues
+    // First update the test
     const test = await Test.findOneAndUpdate(
       { _id: testId },
       {
         $set: {
           'accessControl.type': visibility,
-          // Update test type if visibility is practice
-          type: visibility === 'practice' ? 'practice' : 'assessment',
-          // If making private, clear allowed users and reset limit
-          ...(visibility === 'private' ? {
-            'accessControl.allowedUsers': [],
-            'accessControl.userLimit': 0
-          } : {})
+          type: visibility === 'practice' ? 'practice' : 'assessment'
         }
       },
-      { 
-        new: true,
-        runValidators: false
-      }
+      { new: true }
     );
     
     if (!test) {
@@ -1543,13 +1545,28 @@ export const updateTestVisibility = async (req, res) => {
       });
     }
 
+    // Update all existing registrations for this test
+    await TestRegistration.updateMany(
+      { test: testId },
+      { 
+        $set: { 
+          testType: visibility,
+          registrationType: visibility === 'practice' ? 'practice' : 'assessment'
+        }
+      }
+    );
+
     res.json({
-      message: "Test visibility updated successfully",
+      message: "Test visibility and registrations updated successfully",
       visibility: test.accessControl.type,
       type: test.type
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error updating test visibility:', error);
+    res.status(500).json({ 
+      error: "Failed to update test visibility",
+      message: error.message 
+    });
   }
 };
 
@@ -1672,72 +1689,67 @@ export const getPublicTests = async (req, res) => {
 
 export const registerForTest = async (req, res) => {
   try {
-    const { testId } = req.params;
-    const userId = req.user._id;
-
-    // Find the test
-    const test = await Test.findById(testId);
+    const { uuid } = req.params;
+    const { token } = req.body;
+    
+    const test = await Test.findOne({ uuid });
     if (!test) {
-      return res.status(404).json({ error: "Test not found" });
+      return res.status(404).json({ message: 'Test not found' });
     }
 
-    // Check if test is published and available (public or practice)
-    if (test.status !== 'published' || 
-        !['public', 'practice'].includes(test.accessControl.type)) {
-      return res.status(400).json({ 
-        error: "Test is not available for registration" 
-      });
+    // Allow vendor to register for their own test
+    const isVendor = test.vendor.toString() === req.user._id.toString();
+
+    // Verify access for non-vendors
+    if (test.accessControl.type === 'private' && !isVendor) {
+      if (!token || token !== test.sharingToken) {
+        return res.status(403).json({ message: 'Invalid access token' });
+      }
     }
 
-    // Check if already registered
+    // Check for existing registration
     const existingRegistration = await TestRegistration.findOne({
-      test: testId,
-      user: userId
+      test: test._id,
+      user: req.user._id
     });
 
     if (existingRegistration) {
-      return res.status(400).json({ 
-        error: "Already registered for this test",
-        registration: existingRegistration
+      return res.status(200).json({
+        message: 'User has already registered for this test',
+        registration: {
+          registeredAt: existingRegistration.createdAt,
+          status: existingRegistration.status,
+          testType: existingRegistration.testType,
+          registrationType: existingRegistration.registrationType
+        }
       });
     }
 
-    // Create registration
-    const registration = await TestRegistration.create({
-      test: testId,
-      user: userId,
-      registeredAt: new Date(),
-      status: 'registered',
+    // Create test session
+    const session = await TestSession.create({
+      test: test._id,
+      user: req.user._id,
+      status: 'started',
+      isVendorAttempt: isVendor
+    });
+
+    // Create test registration
+    await TestRegistration.create({
+      test: test._id,
+      user: req.user._id,
       testType: test.accessControl.type,
-      registrationType: test.type // 'assessment' or 'practice'
+      registrationType: test.type,
+      status: 'registered',
+      isVendorAttempt: isVendor
     });
 
-    // If test has a user limit, increment the count
-    if (test.accessControl.userLimit > 0) {
-      await Test.findByIdAndUpdate(testId, {
-        $inc: { 'accessControl.currentUserCount': 1 }
-      });
-    }
-
-    res.status(201).json({
-      message: "Successfully registered for test",
-      registration: {
-        id: registration._id,
-        test: {
-          id: test._id,
-          title: test.title,
-          type: test.type,
-          duration: test.duration,
-          totalMarks: test.totalMarks,
-          passingMarks: test.passingMarks
-        },
-        registeredAt: registration.registeredAt,
-        status: registration.status
-      }
+    res.json({
+      message: 'Successfully registered for test',
+      sessionId: session._id,
+      uuid: test.uuid
     });
-
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -1844,6 +1856,169 @@ export const getUserSubmissions = async (req, res) => {
     res.status(500).json({ 
       error: 'Failed to fetch submissions',
       message: error.message 
+    });
+  }
+};
+
+// Add this new controller function
+export const verifyTestByUuid = async (req, res) => {
+  try {
+    console.log('Verifying test with UUID:', req.params.uuid); // Debug log
+
+    const test = await Test.findOne({ uuid: req.params.uuid })
+      .select('_id uuid title description duration type category difficulty totalMarks status accessControl vendor')
+      .populate('vendor', 'name email')
+      .lean();
+
+    if (!test) {
+      console.log('Test not found for UUID:', req.params.uuid); // Debug log
+      return res.status(404).json({ 
+        message: 'Test not found',
+        uuid: req.params.uuid 
+      });
+    }
+
+    console.log('Found test:', test); // Debug log
+
+    const response = {
+      test: {
+        _id: test._id.toString(),
+        uuid: test.uuid,
+        title: test.title,
+        description: test.description,
+        duration: test.duration,
+        type: test.type,
+        category: test.category,
+        difficulty: test.difficulty,
+        totalMarks: test.totalMarks,
+        accessControl: test.accessControl?.type || 'public',
+        vendor: {
+          name: test.vendor?.name || 'Anonymous',
+          email: test.vendor?.email
+        }
+      }
+    };
+
+    console.log('Sending response:', response); // Debug log
+    res.json(response);
+
+  } catch (error) {
+    console.error('Error in verifyTestByUuid:', error);
+    res.status(500).json({ 
+      message: 'Error verifying test',
+      error: error.message,
+      uuid: req.params.uuid
+    });
+  }
+};
+
+export const checkTestRegistration = async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    
+    const test = await Test.findOne({ uuid })
+      .populate('vendor', 'name email')
+      .populate('accessControl.allowedUsers');
+    
+    if (!test) {
+      return res.status(200).json({ 
+        message: 'Test not found',
+        canRegister: false,
+        uuid
+      });
+    }
+
+    // Check various authorization conditions
+    const isAdmin = req.user.role === 'admin';
+    const isVendor = test.vendor._id.toString() === req.user._id.toString();
+    const isPublic = test.accessControl.type === 'public';
+    const isAllowedUser = test.accessControl.allowedUsers?.some(
+      user => user._id.toString() === req.user._id.toString()
+    );
+
+    // Check existing registration and update if needed
+    const existingRegistration = await TestRegistration.findOne({
+      test: test._id,
+      user: req.user._id
+    });
+
+    // If registration exists, update it to match current test settings
+    if (existingRegistration) {
+      existingRegistration.testType = test.accessControl.type;
+      existingRegistration.registrationType = test.type;
+      await existingRegistration.save();
+    }
+
+    // Determine if user can register
+    let canRegister = false;
+    let message = '';
+    let registrationStatus = null;
+
+    if (existingRegistration) {
+      canRegister = false;
+      message = 'User has already registered for this test';
+      registrationStatus = {
+        registeredAt: existingRegistration.createdAt,
+        status: existingRegistration.status,
+        testType: existingRegistration.testType,
+        registrationType: existingRegistration.registrationType
+      };
+    } else if (isAdmin) {
+      canRegister = true;
+      message = 'Admin has access to all tests';
+    } else if (isVendor) {
+      canRegister = true;
+      message = 'Vendor can access their own test';
+    } else if (isPublic) {
+      canRegister = true;
+      message = 'Test is public and available for all users';
+    } else if (isAllowedUser) {
+      canRegister = true;
+      message = 'User is in the allowed users list';
+    } else {
+      message = 'User is not authorized to register for this test';
+    }
+
+    const response = {
+      canRegister,
+      message,
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role
+      },
+      test: {
+        id: test._id,
+        uuid: test.uuid,
+        title: test.title,
+        type: test.type,
+        duration: test.duration,
+        totalMarks: test.totalMarks,
+        accessControl: test.accessControl.type,
+        vendor: {
+          id: test.vendor._id,
+          name: test.vendor.name,
+          email: test.vendor.email
+        }
+      }
+    };
+
+    // Add registration status if it exists
+    if (registrationStatus) {
+      response.registration = registrationStatus;
+    }
+
+    // Always return 200 status code
+    res.status(200).json(response);
+
+  } catch (error) {
+    console.error('Error in checkTestRegistration:', error);
+    res.status(500).json({ 
+      message: 'Error checking test registration',
+      error: error.message,
+      canRegister: false,
+      uuid: req.params.uuid
     });
   }
 };
