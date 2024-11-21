@@ -1,48 +1,57 @@
 import React from 'react';
-import { Card, CardContent, Typography, Box, LinearProgress } from '@mui/material';
+import { Box, Typography } from '@mui/material';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 
 const PerformanceMetrics = ({ metrics = {} }) => {
-  const {
-    averageScore = 0,
-    passRate = 0,
-    totalAttempts = 0
-  } = metrics;
+  // Sample data - replace with actual metrics from your backend
+  const data = [
+    { name: 'Jan', avgScore: 65, passRate: 70 },
+    { name: 'Feb', avgScore: 68, passRate: 75 },
+    { name: 'Mar', avgScore: 75, passRate: 80 },
+    { name: 'Apr', avgScore: 72, passRate: 78 },
+    { name: 'May', avgScore: 80, passRate: 85 },
+    { name: 'Jun', avgScore: 78, passRate: 82 }
+  ];
 
   return (
-    <Card>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Performance Metrics
-        </Typography>
-        
-        <Box mb={3}>
-          <Typography variant="subtitle2" gutterBottom>
-            Average Score: {averageScore}%
-          </Typography>
-          <LinearProgress 
-            variant="determinate" 
-            value={averageScore} 
-            sx={{ height: 10, borderRadius: 5 }}
+    <Box>
+      <Typography variant="h6" gutterBottom>
+        Performance Trends
+      </Typography>
+      
+      <ResponsiveContainer width="100%" height={400}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" />
+          <YAxis />
+          <Tooltip />
+          <Legend />
+          <Line
+            type="monotone"
+            dataKey="avgScore"
+            stroke="#2196F3"
+            name="Average Score"
+            strokeWidth={2}
           />
-        </Box>
-
-        <Box mb={3}>
-          <Typography variant="subtitle2" gutterBottom>
-            Pass Rate: {passRate}%
-          </Typography>
-          <LinearProgress 
-            variant="determinate" 
-            value={passRate}
-            color="success"
-            sx={{ height: 10, borderRadius: 5 }}
+          <Line
+            type="monotone"
+            dataKey="passRate"
+            stroke="#4CAF50"
+            name="Pass Rate"
+            strokeWidth={2}
           />
-        </Box>
-
-        <Typography variant="subtitle2" gutterBottom>
-          Total Attempts: {totalAttempts}
-        </Typography>
-      </CardContent>
-    </Card>
+        </LineChart>
+      </ResponsiveContainer>
+    </Box>
   );
 };
 

@@ -30,24 +30,21 @@ import SharedTest from './pages/test/SharedTest';
 import TakeTest from './pages/test/TakeTest';
 import TestCompleted from './pages/test/TestCompleted';
 import Proctoring from './pages/test/Proctoring';
-const queryClient = new QueryClient();
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1
+    }
+  }
+});
 
 // Create a wrapper component to handle header visibility
 const AppContent = () => {
   const location = useLocation();
-  
-  // Define routes where header should be hidden
-  const noHeaderRoutes = [
-    '/test/take',
-    '/test/shared',
-    '/test/completed',
-    '/test/proctoring'
-  ];
-
-  // Check if current path starts with any of the noHeaderRoutes
-  const shouldShowHeader = !noHeaderRoutes.some(route => 
-    location.pathname.startsWith(route)
-  );
+  const noHeaderRoutes = ['/test/take', '/test/shared', '/test/completed', '/test/proctoring'];
+  const shouldShowHeader = !noHeaderRoutes.some(route => location.pathname.startsWith(route));
 
   return (
     <>
@@ -59,96 +56,32 @@ const AppContent = () => {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route 
-            path="/profile" 
-            
-            element={<ProtectedRoute element={<Profile />} allowedRoles={['user', 'vendor', 'admin']} />} 
-          />
-          <Route 
-            path="/dashboard/user" 
-            element={<ProtectedRoute element={<UserDashboardPage />} allowedRoles={['user', 'admin']} />} 
-          />
-          <Route 
-            path="/dashboard/vendor" 
-            element={<ProtectedRoute element={<VendorDashboardPage />} allowedRoles={['vendor', 'admin']} />} 
-          />
-          <Route 
-            path="/dashboard/admin" 
-            element={<ProtectedRoute element={<AdminDashboardPage />} allowedRoles={['admin']} />} 
-          />
-          <Route path="/vendor/dashboard" element={<Dashboard />} />
-          <Route 
-            path="/vendor/dashboard" 
-            element={
-              <ProtectedRoute 
-                element={<VendorDashboard />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/tests" 
-            element={
-              <ProtectedRoute 
-                element={<VendorTests />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/tests/create" 
-            element={
-              <ProtectedRoute 
-                element={<CreateTest />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/analytics" 
-            element={
-              <ProtectedRoute 
-                element={<VendorAnalytics />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/candidates" 
-            element={
-              <ProtectedRoute 
-                element={<VendorCandidates />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/invitations" 
-            element={
-              <ProtectedRoute 
-                element={<VendorInvitations />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/profile" 
-            element={
-              <ProtectedRoute 
-                element={<VendorProfile />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/reports" 
-            element={
-              <ProtectedRoute 
-                element={<VendorReports />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
+          <Route path="/profile" element={
+            <ProtectedRoute element={<Profile />} allowedRoles={['user', 'vendor', 'admin']} />
+          } />
+          <Route path="/dashboard/user" element={
+            <ProtectedRoute element={<UserDashboardPage />} allowedRoles={['user', 'admin']} />
+          } />
+          <Route path="/dashboard/vendor" element={
+            <ProtectedRoute element={<VendorDashboardPage />} allowedRoles={['vendor', 'admin']} />
+          } />
+          <Route path="/dashboard/admin" element={
+            <ProtectedRoute element={<AdminDashboardPage />} allowedRoles={['admin']} />
+          } />
+          <Route path="/vendor/*" element={
+            <ProtectedRoute element={
+              <Routes>
+                <Route path="dashboard" element={<VendorDashboard />} />
+                <Route path="tests" element={<VendorTests />} />
+                <Route path="tests/create" element={<CreateTest />} />
+                <Route path="analytics" element={<VendorAnalytics />} />
+                <Route path="candidates" element={<VendorCandidates />} />
+                <Route path="invitations" element={<VendorInvitations />} />
+                <Route path="profile" element={<VendorProfile />} />
+                <Route path="reports" element={<VendorReports />} />
+              </Routes>
+            } allowedRoles={['vendor', 'admin']} />
+          } />
           <Route path="/test/shared/:uuid" element={<SharedTest />} />
           <Route path="/test/take/:uuid" element={<TakeTest />} />
           <Route path="/test/completed" element={<TestCompleted />} />
@@ -162,11 +95,7 @@ const AppContent = () => {
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router
-        future={{
-          v7_relativeSplatPath: true
-        }}
-      >
+      <Router>
         <AuthProvider>
           <AppContent />
         </AuthProvider>
