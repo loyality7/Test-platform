@@ -4,7 +4,6 @@ import User from '../models/user.model.js';
 import Vendor from '../models/vendor.model.js';
 import Test from '../models/test.model.js';
 import TestResult from '../models/testResult.model.js';
-import bcrypt from 'bcryptjs';
 
 const router = express.Router();
 
@@ -1233,7 +1232,7 @@ router.post('/vendors/create', isAdmin, async (req, res) => {
     const defaultPassword = 'Vendor@' + Math.random().toString(36).slice(-8);
 
     // Hash the password
-    const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+    const hashedPassword = defaultPassword;
 
     // Create the user with vendor role
     const newVendor = new User({
