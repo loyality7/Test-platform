@@ -26,7 +26,7 @@ export default function SharedTest() {
         }
 
         console.log('Sending verify request...');
-        const response = await axios.post(`/tests/verify/${uuid}`, {}, {
+        const response = await axios.post(`/api/tests/verify/${uuid}`, {}, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         console.log('Full response:', response);
@@ -43,7 +43,7 @@ export default function SharedTest() {
         console.log('Test data set successfully');
 
         console.log('Checking registration status...');
-        const regResponse = await axios.post(`/tests/${uuid}/check-registration`, {}, {
+        const regResponse = await axios.post(`/api/tests/${uuid}/check-registration`, {}, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         console.log('Full registration check response:', regResponse);
@@ -59,7 +59,7 @@ export default function SharedTest() {
             };
             console.log('Device info for session:', deviceInfo);
             
-            const sessionResponse = await axios.post('/tests/sessions/start', {
+            const sessionResponse = await axios.post('/api/tests/sessions/start', {
               testId: regResponse.test.id,
               deviceInfo
             }, {
@@ -142,7 +142,7 @@ export default function SharedTest() {
 
       console.log('Sending registration request...');
       const response = await axios.post(
-        `/tests/register/${uuid}`,
+        `/api/tests/register/${uuid}`,
         {},
         { headers: { 'Authorization': `Bearer ${token}` } }
       );

@@ -2,28 +2,87 @@ import Test from "../models/test.model.js";
 import { CodingSubmission } from '../models/codingSubmission.model.js';
 import { MCQSubmission } from '../models/mcqSubmission.model.js';
 import Submission from '../models/submission.model.js';
+import TestRegistration from '../models/testRegistration.model.js';
+
+// Add this helper function at the top
+const validateTestAccess = async (testId, userId, userRole) => {
+  const test = await Test.findById(testId)
+    .populate('vendor')
+    .populate('accessControl.allowedUsers');
+  
+  if (!test) {
+    return { valid: false, message: 'Test not found' };
+  }
+
+  const isAdmin = userRole === 'admin';
+  const isVendor = test.vendor._id.toString() === userId.toString();
+  const isPublic = test.accessControl.type === 'public';
+  const isPractice = test.type === 'practice';
+  const isAllowedUser = test.accessControl.allowedUsers?.some(
+    user => user._id.toString() === userId.toString()
+  );
+
+  if (isAdmin || isVendor || isPublic || isPractice || isAllowedUser) {
+    return { valid: true, test };
+  }
+
+  return { valid: false, message: 'Not authorized to access this test' };
+};
 
 // Submit MCQ answer
 export const submitMCQ = async (req, res) => {
   try {
     const { testId, submissions } = req.body;
     
-    // Find test and populate MCQs
-    const testData = await Test.findById(testId);
-    if (!testData) {
-      return res.status(404).json({ error: "Test not found" });
+    // First find the test using Test model
+    const test = await Test.findById(testId);
+    if (!test) {
+      // Try finding by UUID if ID lookup fails
+      const testByUuid = await Test.findOne({ uuid: testId });
+      if (!testByUuid) {
+        return res.status(404).json({ 
+          error: "Test not found",
+          requiresRegistration: false 
+        });
+      }
+      // Use the actual MongoDB _id for further queries
+      req.body.testId = testByUuid._id;
     }
 
-    // Find or create main submission
+    // Check test registration with expanded status check
+    const registration = await TestRegistration.findOne({
+      test: test?._id || testByUuid._id,
+      user: req.user._id,
+      status: { $in: ['registered', 'started'] }
+    });
+
+    // Handle registration cases
+    if (!registration) {
+      return res.status(403).json({
+        error: "Not registered for test",
+        requiresRegistration: true
+      });
+    }
+
+    // Update registration status if needed
+    if (registration.status === 'registered') {
+      registration.status = 'started';
+      registration.startTime = new Date();
+      await registration.save();
+    }
+
+    // Find or create submission document
     let submission = await Submission.findOne({
       user: req.user._id,
-      test: testId
+      test: test?._id || testByUuid._id
     });
 
     if (!submission) {
       submission = new Submission({
         user: req.user._id,
-        test: testId,
+        test: test?._id || testByUuid._id,
+        status: 'in_progress',
+        startTime: registration.startTime,
         mcqSubmission: {
           answers: [],
           completed: false
@@ -31,93 +90,65 @@ export const submitMCQ = async (req, res) => {
       });
     }
 
-    // Initialize metrics
+    // Process submissions
     let totalMarksObtained = 0;
-    let totalPossibleMarks = 0;
     let correctAnswers = 0;
-    let totalQuestions = submissions.length;
 
-    // Process each MCQ submission
     for (const { questionId, selectedOptions, timeTaken } of submissions) {
-      // Find the MCQ in test data
       const mcq = testData.mcqs.find(m => m._id.toString() === questionId);
-      if (!mcq) {
-        return res.status(404).json({ error: `Question ${questionId} not found in test` });
-      }
+      if (!mcq) continue;
 
-      // Validate selected options
-      if (!Array.isArray(selectedOptions)) {
-        return res.status(400).json({ error: "selectedOptions must be an array" });
-      }
-
-      if (mcq.answerType === 'single' && selectedOptions.length !== 1) {
-        return res.status(400).json({ 
-          error: `Question ${questionId} requires exactly one answer` 
-        });
-      }
-
-      // Calculate marks
       const isCorrect = arraysEqual(
         selectedOptions.sort(),
         mcq.correctOptions.sort()
       );
       const marksObtained = isCorrect ? mcq.marks : 0;
 
-      // Update metrics
       totalMarksObtained += marksObtained;
-      totalPossibleMarks += mcq.marks;
       if (isCorrect) correctAnswers++;
 
-      // Update or add answer
-      const existingAnswerIndex = submission.mcqSubmission.answers.findIndex(
-        a => a.questionId.toString() === questionId
-      );
-
-      const newAnswer = {
+      submission.mcqSubmission.answers.push({
         questionId,
         selectedOptions,
         marks: marksObtained,
         isCorrect,
         timeTaken: timeTaken || 0
-      };
-
-      if (existingAnswerIndex === -1) {
-        submission.mcqSubmission.answers.push(newAnswer);
-      } else {
-        submission.mcqSubmission.answers[existingAnswerIndex] = newAnswer;
-      }
+      });
     }
 
-    // Update submission metrics and status
-    submission.mcqSubmission.totalScore = totalMarksObtained;
+    // Update submission
     submission.mcqSubmission.completed = true;
+    submission.mcqSubmission.totalScore = totalMarksObtained;
     submission.mcqSubmission.submittedAt = new Date();
-    submission.status = submission.codingSubmission?.completed ? 'completed' : 'mcq_completed';
-    submission.totalScore = totalMarksObtained + (submission.codingSubmission?.totalScore || 0);
+    submission.status = 'mcq_completed';
+    
+    // Update registration
+    registration.status = 'completed';
+    registration.completedAt = new Date();
 
-    await submission.save();
+    // Save everything
+    await Promise.all([
+      submission.save(),
+      registration.save()
+    ]);
 
     res.status(201).json({
       submissionId: submission._id,
       submission: {
-        ...submission.toObject(),
-        submissionStats: {
-          totalQuestions: testData.mcqs.length,
-          answeredQuestions: submissions.length,
-          correctAnswers,
-          accuracy: (correctAnswers / totalQuestions) * 100,
-          totalScore: submission.totalScore,
-          mcqScore: totalMarksObtained,
-          codingScore: submission.codingSubmission?.totalScore || 0
-        }
+        mcqSubmission: submission.mcqSubmission,
+        totalScore: totalMarksObtained,
+        correctAnswers,
+        totalQuestions: submissions.length
       },
-      message: 'MCQ submissions saved successfully'
+      message: "MCQ submissions saved successfully"
     });
+
   } catch (error) {
-    console.error('MCQ submission error:', error);
+    console.error('MCQ Submission Error:', error);
     res.status(500).json({ 
-      message: 'Error submitting MCQ answers', 
-      error: error.message 
+      error: "Failed to submit MCQs",
+      message: error.message,
+      requiresRegistration: false
     });
   }
 };

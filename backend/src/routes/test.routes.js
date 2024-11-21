@@ -33,7 +33,8 @@ import {
   updateSessionStatus,
   getUserSubmissions,
   verifyTestByUuid,
-  checkTestRegistration
+  checkTestRegistration,
+  getTestIdByUuid
 } from "../controllers/test.controller.js";
 import { auth } from "../middleware/auth.js";
 import { checkRole } from "../middleware/checkRole.js";
@@ -838,32 +839,23 @@ router.get("/:testId/invitations", auth, checkRole(["vendor", "admin"]), getTest
  * @swagger
  * /api/tests/{uuid}/take:
  *   get:
- *     summary: Get test by UUID for taking
+ *     summary: Get test details for taking the test
  *     tags: [Tests]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: uuid
  *         required: true
- *         description: UUID of the test
  *         schema:
  *           type: string
  *           format: uuid
+ *         description: UUID of the test
  *     responses:
  *       200:
- *         description: Test details with shareable link
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 test:
- *                   type: object
- *                 shareableLink:
- *                   type: string
+ *         description: Test details retrieved successfully
  */
-router.get("/:uuid/take", async (req, res) => {
+router.get("/:uuid/take", auth, async (req, res) => {
   try {
     const test = await Test.findOne({ uuid: req.params.uuid })
       .populate('mcqs')
@@ -879,6 +871,8 @@ router.get("/:uuid/take", async (req, res) => {
     res.json({
       message: "Test loaded successfully",
       data: {
+        id: test._id,  // Added test ID to response
+        uuid: test.uuid,  // Added UUID to response
         title: test.title,
         description: test.description,
         duration: test.duration,
@@ -892,7 +886,8 @@ router.get("/:uuid/take", async (req, res) => {
     console.error('Error in getTestByUuid:', error);
     res.status(500).json({ 
       message: "Internal server error",
-      error: error.message
+      error: error.message,
+      uuid: req.params.uuid
     });
   }
 });
@@ -1932,6 +1927,7 @@ router.post("/register/:uuid", auth, registerForTest);
  *         required: true
  *         schema:
  *           type: string
+ *           format: uuid
  *         description: UUID of the test
  *     responses:
  *       200:
@@ -2022,6 +2018,44 @@ router.get("/:uuid/take", auth, getTestByUuid);
  *         description: Test not found
  */
 router.post("/:uuid/check-registration", auth, checkTestRegistration);
+
+/**
+ * @swagger
+ * /api/tests/parse/{uuid}:
+ *   get:
+ *     summary: Get test ID from UUID
+ *     tags: [Tests]
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: UUID of the test
+ *     responses:
+ *       200:
+ *         description: Test ID retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     uuid:
+ *                       type: string
+ *                     title:
+ *                       type: string
+ *       404:
+ *         description: Test not found
+ */
+router.get("/parse/:uuid", getTestIdByUuid);
 
 export default router;
 

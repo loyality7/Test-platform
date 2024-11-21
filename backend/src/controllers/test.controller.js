@@ -1692,19 +1692,47 @@ export const registerForTest = async (req, res) => {
     const { uuid } = req.params;
     const { token } = req.body;
     
-    const test = await Test.findOne({ uuid });
+    const test = await Test.findOne({ uuid })
+      .populate('vendor', 'name email')
+      .populate('accessControl.allowedUsers');
+    
     if (!test) {
       return res.status(404).json({ message: 'Test not found' });
     }
 
-    // Allow vendor to register for their own test
-    const isVendor = test.vendor.toString() === req.user._id.toString();
+    // Validate test access
+    const isAdmin = req.user.role === 'admin';
+    const isVendor = test.vendor._id.toString() === req.user._id.toString();
+    const isPublic = test.accessControl.type === 'public';
+    const isPractice = test.type === 'practice';
+    const isAllowedUser = test.accessControl.allowedUsers?.some(
+      user => user._id.toString() === req.user._id.toString()
+    );
 
-    // Verify access for non-vendors
-    if (test.accessControl.type === 'private' && !isVendor) {
-      if (!token || token !== test.sharingToken) {
-        return res.status(403).json({ message: 'Invalid access token' });
-      }
+    // Check if user has permission to register
+    let canRegister = false;
+    let message = '';
+
+    if (isAdmin) {
+      canRegister = true;
+      message = 'Admin access granted';
+    } else if (isVendor) {
+      canRegister = true;
+      message = 'Vendor access granted';
+    } else if (isPublic || isPractice) {
+      canRegister = true;
+      message = `${isPublic ? 'Public' : 'Practice'} test access granted`;
+    } else if (isAllowedUser) {
+      canRegister = true;
+      message = 'Allowed user access granted';
+    } else if (test.accessControl.type === 'private' && token === test.sharingToken) {
+      canRegister = true;
+      message = 'Token access granted';
+    } else {
+      return res.status(403).json({ 
+        message: 'Not authorized to register for this test',
+        requiresToken: test.accessControl.type === 'private'
+      });
     }
 
     // Check for existing registration
@@ -1725,31 +1753,45 @@ export const registerForTest = async (req, res) => {
       });
     }
 
-    // Create test session
-    const session = await TestSession.create({
-      test: test._id,
-      user: req.user._id,
-      status: 'started',
-      isVendorAttempt: isVendor
-    });
-
     // Create test registration
-    await TestRegistration.create({
+    const registration = await TestRegistration.create({
       test: test._id,
       user: req.user._id,
       testType: test.accessControl.type,
       registrationType: test.type,
       status: 'registered',
+      isVendorAttempt: isVendor,
+      startTime: new Date()
+    });
+
+    // Create test session
+    const session = await TestSession.create({
+      test: test._id,
+      user: req.user._id,
+      status: 'created',
       isVendorAttempt: isVendor
     });
 
     res.json({
-      message: 'Successfully registered for test',
+      message: `Successfully registered for test - ${message}`,
       sessionId: session._id,
-      uuid: test.uuid
+      uuid: test.uuid,
+      status: 'registered',
+      registration: {
+        id: registration._id,
+        registeredAt: registration.createdAt,
+        status: registration.status,
+        testType: registration.testType,
+        registrationType: registration.registrationType
+      }
     });
+
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Registration error:', error);
+    res.status(500).json({ 
+      message: 'Error registering for test',
+      error: error.message 
+    });
   }
 };
 
@@ -2018,6 +2060,40 @@ export const checkTestRegistration = async (req, res) => {
       message: 'Error checking test registration',
       error: error.message,
       canRegister: false,
+      uuid: req.params.uuid
+    });
+  }
+};
+
+export const getTestIdByUuid = async (req, res) => {
+  try {
+    console.log('UUID received:', req.params.uuid); // Debug log
+
+    const test = await Test.findOne({ uuid: req.params.uuid })
+      .select('_id uuid title'); // Only select necessary fields
+    
+    if (!test) {
+      console.log('Test not found for UUID:', req.params.uuid);
+      return res.status(404).json({ 
+        message: "Test not found",
+        uuid: req.params.uuid 
+      });
+    }
+
+    res.json({
+      message: "Test found successfully",
+      data: {
+        id: test._id,
+        uuid: test.uuid,
+        title: test.title
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in getTestIdByUuid:', error);
+    res.status(500).json({ 
+      message: "Internal server error",
+      error: error.message,
       uuid: req.params.uuid
     });
   }
