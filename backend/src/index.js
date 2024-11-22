@@ -12,6 +12,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import vendorRoutes from "./routes/vendor.routes.js";
 import { authenticateToken } from './middleware/auth.middleware.js';
 import userRoutes from "./routes/user.routes.js";
+import codeRoutes from "./routes/code.routes.js";
 
 
 dotenv.config();
@@ -64,6 +65,7 @@ app.use("/api/submissions", submissionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/vendor", vendorRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/code", codeRoutes);
 
 // Swagger UI route last
 app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerDocs));

@@ -646,4 +646,76 @@ export const debugTests = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+};
+
+export const getTestUsers = async (req, res) => {
+  try {
+    const { testId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    // Get all users who attempted this test
+    const submissions = await Submission.find({ test: testId })
+      .populate('user', 'name email')
+      .sort('-updatedAt');
+
+    const users = submissions.map(submission => ({
+      userId: submission.user._id,
+      name: submission.user.name,
+      email: submission.user.email,
+      lastAttempt: submission.updatedAt
+    }));
+
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getUserSubmissions = async (req, res) => {
+  try {
+    const { testId, userId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    // Get all submissions for this user on this test
+    const submissions = await Submission.find({ test: testId, user: userId })
+      .populate('user', 'name email')
+      .sort('-updatedAt');
+
+    const userSubmissions = submissions.map(submission => ({
+      submissionId: submission._id,
+      score: submission.totalScore,
+      status: submission.status,
+      submittedAt: submission.updatedAt,
+      details: {
+        mcqAnswers: submission.mcqSubmission?.answers || [],
+        codingChallenges: submission.codingSubmission?.challenges || []
+      }
+    }));
+
+    res.json(userSubmissions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 }; 

@@ -15,7 +15,9 @@ import {
   getVendorReports,
   exportTestResults,
   getVendorTest,
-  debugTests
+  debugTests,
+  getTestUsers,
+  getUserSubmissions
 } from "../controllers/vendor.controller.js";
 
 const router = express.Router();
@@ -838,5 +840,58 @@ router.get('/analytics/candidate-performance', auth, checkRole(["vendor"]), asyn
     res.status(500).json({ message: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users:
+ *   get:
+ *     summary: Get all users who attempted a specific test
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Users retrieved successfully
+ *       403:
+ *         description: Forbidden - Test doesn't belong to vendor
+ *       404:
+ *         description: Test not found
+ */
+router.get("/tests/:testId/users", auth, checkRole(["vendor"]), getTestUsers);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/{userId}/submissions:
+ *   get:
+ *     summary: Get detailed submission information for a specific user
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Submission information retrieved successfully
+ *       403:
+ *         description: Forbidden - Test doesn't belong to vendor
+ *       404:
+ *         description: Test not found
+ */
+router.get("/tests/:testId/users/:userId/submissions", auth, checkRole(["vendor"]), getUserSubmissions);
 
 export default router; 

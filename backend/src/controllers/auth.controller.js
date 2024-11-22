@@ -16,6 +16,38 @@ export const forgotPasswordLimiter = rateLimit({
 export const register = async (req, res) => {
   try {
     const { name, username, email, password, role = "user" } = req.body;
+    
+    console.log('Registration attempt:', {
+      email,
+      username,
+      name,
+      role
+    });
+
+    // Check if email already exists (case insensitive)
+    const existingUser = await User.findOne({ 
+      email: { $regex: new RegExp(`^${email}$`, 'i') } 
+    });
+    
+    if (existingUser) {
+      console.log('Email already exists:', email);
+      return res.status(400).json({ 
+        error: "Email already registered. Please use a different email or login instead.",
+        field: "email"
+      });
+    }
+
+    // Check if username already exists (case insensitive)
+    const existingUsername = await User.findOne({ 
+      username: { $regex: new RegExp(`^${username}$`, 'i') }
+    });
+    if (existingUsername) {
+      console.log('Username already exists:', username);
+      return res.status(400).json({ 
+        error: "Username already taken. Please choose a different username.",
+        field: "username"
+      });
+    }
 
     // Validate role
     if (role === "admin") {
@@ -32,6 +64,7 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({ name, username, email, password: hashedPassword, role });
+    console.log('User created successfully:', user._id);
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET);
     res.json({ token, user: { id: user._id, name, username, email, role } });
   } catch (error) {
@@ -196,5 +229,15 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({ 
       error: "There was an error resetting your password. Please try again later." 
     });
+  }
+};
+
+// Temporary debug endpoint - REMOVE IN PRODUCTION
+export const debugUsers = async (req, res) => {
+  try {
+    const users = await User.find({}, 'email username');
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 };

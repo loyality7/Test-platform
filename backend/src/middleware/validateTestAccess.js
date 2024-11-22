@@ -1,12 +1,12 @@
-import TestRegistration from '../models/testRegistration.model.js';
 import Test from '../models/test.model.js';
 
 export const validateTestAccess = async (req, res, next) => {
   try {
+    // Extract required parameters from request
     let testId = req.params.testId || req.body.testId;
     const userId = req.user._id;
-    
-    // Find test by ID or UUID
+
+    // Find test by either MongoDB ID or UUID
     const test = await Test.findOne({
       $or: [
         { _id: testId },
@@ -14,6 +14,7 @@ export const validateTestAccess = async (req, res, next) => {
       ]
     });
 
+    // Return 404 if test doesn't exist
     if (!test) {
       return res.status(404).json({ 
         error: "Test not found",
@@ -21,35 +22,30 @@ export const validateTestAccess = async (req, res, next) => {
       });
     }
 
-    // Use the actual MongoDB _id for registration lookup
-    testId = test._id;
-    
-    // Check if user is registered for the test
-    const registration = await TestRegistration.findOne({
-      test: testId,
-      user: userId,
-      status: { $in: ['registered', 'started'] }
-    });
+    // Check access control
+    const isAdmin = req.user.role === 'admin';
+    const isVendor = test.vendor.toString() === req.user._id.toString();
+    const isPublicTest = test.accessControl.type === 'public';
+    const isPracticeTest = test.type === 'practice';
+    const isAllowedUser = test.accessControl.allowedUsers?.includes(req.user._id);
 
-    if (!registration) {
-      return res.status(403).json({
-        error: "Not registered for test",
-        requiresRegistration: true
+    // Only allow registration for public/practice tests
+    // For private/assessment tests, user must be explicitly allowed
+    if (!isAdmin && !isVendor && !isPublicTest && !isPracticeTest && !isAllowedUser) {
+      return res.status(403).json({ 
+        error: "Not authorized to access this test",
+        requiresRegistration: false 
       });
     }
 
-    // If test is registered but not started, update status to started
-    if (registration.status === 'registered') {
-      registration.status = 'started';
-      registration.startedAt = new Date();
-      await registration.save();
-    }
-
-    // Add test and registration to request object
+    // Ensure we use MongoDB _id for subsequent queries
+    testId = test._id;
+    
+    // Store validated objects in request for use in subsequent middleware/routes
     req.test = test;
-    req.testRegistration = registration;
     next();
   } catch (error) {
+    // Log and return any unexpected errors
     console.error('Test access validation error:', error);
     res.status(500).json({ 
       error: error.message,

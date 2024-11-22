@@ -12,10 +12,10 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import PublishIcon from '@mui/icons-material/Publish';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
-import { getMethod, putMethod, deleteMethod, postMethod } from '../../helpers';
 import { motion } from 'framer-motion';
 import { styled, alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
+import apiService from '../../services/api';
 
 const StyledTableContainer = styled(TableContainer)(({ theme }) => ({
   borderRadius: theme.spacing(2),
@@ -59,65 +59,80 @@ const Tests = () => {
 
   const fetchTests = async () => {
     try {
-      const response = await getMethod('vendor/tests', true);
+      const response = await apiService.get('/vendor/tests');
+      console.log('Fetch tests response:', response);
       
-      if (response.success && response.data.tests) {
+      if (!response) {
+        throw new Error('No response from server');
+      }
+      if (Array.isArray(response.tests)) {
+        setTests(response.tests);
+      } else if (Array.isArray(response.data?.tests)) {
         setTests(response.data.tests);
       } else {
-        throw new Error(response.error || 'Failed to fetch tests');
+        console.log('Invalid response format:', response);
+        setSnackbar({
+          open: true,
+          message: response.error || 'Failed to fetch tests',
+          severity: 'error'
+        });
+        setTests([]);
       }
     } catch (error) {
-      console.error('Error fetching tests:', error);
+      console.log('Full error object:', error);
+      console.error('Error fetching tests:', error.message);
+      setSnackbar({
+        open: true,
+        message: error.message || 'Failed to fetch tests',
+        severity: 'error'
+      });
       setTests([]);
     }
   };
 
   const handleStatusToggle = async (id, currentStatus) => {
-    const newStatus = currentStatus === 'published' ? 'draft' : 'published';
     try {
-      const response = await putMethod(`tests/${id}`, { status: newStatus }, true);
+      const response = await apiService.put(`tests/${id}`, { 
+        status: currentStatus === 'published' ? 'draft' : 'published' 
+      });
+      console.log('Status toggle response:', response);
       if (response.success) {
-        fetchTests(); // Refresh the list
-      } else {
-        throw new Error(response.error);
+        fetchTests();
       }
     } catch (error) {
+      console.log('Status toggle error:', error);
       console.error('Error updating test status:', error);
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this test?')) {
-      try {
-        const response = await deleteMethod(`tests/${id}`, null, true);
-        
-        if (response.success) {
-          setSnackbar({
-            open: true,
-            message: 'Test deleted successfully',
-            severity: 'success'
-          });
-          fetchTests(); // Refresh the list
-        } else {
-          throw new Error(response.error || 'Failed to delete test');
-        }
-      } catch (error) {
-        console.error('Error deleting test:', error);
+    try {
+      const response = await apiService.delete(`tests/${id}`);
+      if (response.success) {
         setSnackbar({
           open: true,
-          message: 'Failed to delete test',
-          severity: 'error'
+          message: 'Test deleted successfully',
+          severity: 'success'
         });
+        fetchTests();
       }
+    } catch (error) {
+      console.error('Error deleting test:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to delete test',
+        severity: 'error'
+      });
     }
   };
 
   const handlePublish = async (id) => {
     try {
-      const response = await postMethod(`tests/${id}/publish`, {}, true);
+      const response = await apiService.post(`tests/${id}/publish`);
+      console.log('Publish response:', response);
       
-      if (response.success) {
-        const shareableLink = response.data?.shareableLink;
+      if (response && (response.message || response.data)) {
+        const shareableLink = response.shareableLink || response.data?.shareableLink;
         
         // Copy link to clipboard
         if (shareableLink) {

@@ -25,21 +25,16 @@ const LoginForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     
     try {
-      const response = await login({
+      const result = await login({
         login: formData.emailOrUsername,
         password: formData.password
       });
       
-      const userRole = response.user.role;
-      if (userRole === 'admin') {
-        navigate('/dashboard/admin');
-      } else if (userRole === 'vendor') {
-        navigate('/dashboard/vendor');
-      } else {
-        navigate('/dashboard/user');
-      }
+      console.log('Login successful:', result);
+      navigate('/');
       
     } catch (error) {
       console.error('Login error:', error);

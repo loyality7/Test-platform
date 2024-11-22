@@ -1,5 +1,5 @@
 import { createContext, useReducer, useContext } from 'react';
-import { postMethod } from '../helpers';
+import apiService from '../services/api';
 
 const initialState = {
   user: JSON.parse(localStorage.getItem('user')) || null,
@@ -51,13 +51,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       dispatch({ type: 'LOGIN_START' });
-      const response = await postMethod('auth/login', credentials);
+      const response = await apiService.post('/auth/login', credentials);
       
-      if (!response.success || !response.data) {
-        throw new Error(response.error || 'Login failed');
-      }
-
-      const { token, user } = response.data;
+      const { token, user } = response;
 
       if (!user || !token) {
         throw new Error('Invalid response format');
@@ -68,16 +64,16 @@ export const AuthProvider = ({ children }) => {
 
       dispatch({ 
         type: 'LOGIN_SUCCESS', 
-        payload: {               
-          user,
-          token
-        } 
+        payload: { user, token }
       });
       
       return { user, token };
       
     } catch (error) {
-      dispatch({ type: 'LOGIN_FAILURE', payload: error.message });
+      dispatch({ 
+        type: 'LOGIN_FAILURE', 
+        payload: error.message || 'Login failed'
+      });
       throw error;
     }
   };

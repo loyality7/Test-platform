@@ -88,11 +88,6 @@ const codingSubmissionSchema = new mongoose.Schema({
     ref: 'Test',
     required: true
   },
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
   challengeId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Challenge',

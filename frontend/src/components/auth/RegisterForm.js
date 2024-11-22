@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import './RegisterForm.css';
-import { postMethod } from '../../helpers';
+import apiService from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const RegisterForm = () => {
@@ -28,27 +28,22 @@ const RegisterForm = () => {
     setError('');
     
     try {
-      const response = await postMethod('auth/register', formData);
+      const response = await apiService.post('auth/register', formData);
       
-      if (response.success) {
-        console.log('Registration successful');
+      if (response.token) {
         navigate('/login');
+      } else if (response.error) {
+        setError(response.error);
       } else {
-        if (response.error?.includes('E11000 duplicate key error') && 
-            response.error?.includes('email')) {
-          setError('This email address is already registered. Please use a different email or try logging in.');
-        } else {
-          setError(response.message || response.error || 'Registration failed. Please check your input.');
-        }
+        setError('Registration failed. Please check your input.');
       }
-    } catch (error) {
-      console.error('Error:', error);
-      if (error.status === 500) {
-        setError('Server error occurred. Please try again later.');
-      } else if (error.message) {
-        setError(error.message);
+    } catch (err) {
+      if (err.field === 'email') {
+        setError('This email address is already registered. Please use a different email.');
+      } else if (err.field === 'username') {
+        setError('This username is already taken. Please choose a different username.');
       } else {
-        setError('Registration failed. Please check your connection and try again.');
+        setError(err.error || 'Registration failed. Please try again.');
       }
     } finally {
       setLoading(false);

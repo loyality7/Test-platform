@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Timer, CheckCircle2, Circle, Clock, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import axios from 'axios';
+import { apiService } from '../../../services/api';
+import { toast } from 'react-hot-toast';
 
 export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
   const [currentMcq, setCurrentMcq] = useState(0);
   const [answers, setAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(120 * 60);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
   const [questionStartTime, setQuestionStartTime] = useState(Date.now());
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,32 +22,26 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
   }, []);
 
   useEffect(() => {
-    console.log('MCQ Component Props:', {
-      mcqsCount: mcqs?.length,
-      testId,
-      currentAnswers: answers
-    });
-  }, [mcqs, testId, answers]);
+    if (mcqs?.length && (testId || localStorage.getItem('currentTestId'))) {
+      console.log('MCQ Component Props:', {
+        mcqsCount: mcqs?.length,
+        testId: testId || localStorage.getItem('currentTestId'),
+        answersCount: Object.keys(answers).length
+      });
+    }
+  }, [mcqs, testId]);
 
   useEffect(() => {
     const parseTestUUID = async () => {
       try {
         setIsLoadingTestId(true);
-        const uuid = window.location.pathname.split('/').pop(); // Get UUID from URL
-        const token = localStorage.getItem('token');
+        const uuid = window.location.pathname.split('/').pop();
         
-        const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/tests/parse/${uuid}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
+        const response = await apiService.get(`tests/parse/${uuid}`);
 
-        if (response.data?.data?.id) {
-          localStorage.setItem('currentTestId', response.data.data.id);
-          console.log('Test ID stored:', response.data.data.id);
+        if (response?.data?.id) {
+          localStorage.setItem('currentTestId', response.data.id);
+          console.log('Test ID stored:', response.data.id);
         }
       } catch (error) {
         console.error('Error parsing test UUID:', error);
@@ -70,60 +66,177 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
     try {
       setIsSubmitting(true);
       
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('No authentication token found. Please log in again.');
-        navigate('/login');
+      const currentTestId = testId || localStorage.getItem('currentTestId');
+      
+      if (!currentTestId) {
+        toast.error('Test ID not found. Please refresh the page.');
         return;
+      }
+
+      try {
+        const testStatus = await apiService.get(`tests/status/${currentTestId}`);
+        if (testStatus?.data?.registrationStatus === 'completed') {
+          toast.error('This test has already been completed!');
+          navigate('/dashboard');
+          return;
+        }
+      } catch (statusError) {
+        console.error('Error checking test status:', statusError);
       }
 
       const formattedSubmissions = Object.entries(answers).map(([questionId, data]) => ({
         questionId,
-        selectedOptions: data.selectedOptions
+        selectedOptions: data.selectedOptions,
+        timeTaken: data.timeTaken || 0
       }));
 
-      const requestPayload = {
-        testId,
-        submissions: formattedSubmissions
+      if (formattedSubmissions.length === 0) {
+        toast.error('No answers selected. Please answer at least one question.');
+        return;
+      }
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session');
+
+      if (!sessionId) {
+        console.error('No session ID found');
+        toast.error('Invalid session. Please try again.');
+        return;
+      }
+
+      const submissionData = {
+        testId: currentTestId,
+        submissions: formattedSubmissions,
+        sessionId: sessionId
       };
-      
-      const requestConfig = {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+
+      console.log('Submitting MCQ Data:', submissionData);
+
+      const response = await apiService.post('submissions/submit/mcq', submissionData);
+
+      if (response?.data) {
+        console.log('MCQ Submission Response:', response.data);
+        
+        if (response.data.registrationStatus === 'completed') {
+          toast.success('Test completed successfully!');
+          localStorage.removeItem('currentTestId');
+          localStorage.removeItem('mcq_answers');
+          navigate('/dashboard');
+          return;
         }
-      };
 
-      console.log('API Request Details:', {
-        url: `${process.env.REACT_APP_API_URL}/api/submissions/submit/mcq`,
-        payload: requestPayload,
-        config: requestConfig
-      });
+        if (response.data.error) {
+          throw new Error(response.data.message || response.data.error);
+        }
 
-      const response = await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/submissions/submit/mcq`,
-        requestPayload,
-        requestConfig
-      );
-
-      if (response.status === 201 && response.data.submission) {
-        console.log('MCQ Submission Successful!', response.data);
-        onSubmitMCQs(response.data.submission);
+        if (response.data.submission || response.data.submissionId) {
+          console.log('MCQ Submission Success:', response.data);
+          localStorage.removeItem('currentTestId');
+          localStorage.removeItem('mcq_answers');
+          onSubmitMCQs(response.data.submission);
+        } else {
+          throw new Error('Server response missing submission data');
+        }
+      } else {
+        throw new Error('Invalid server response');
       }
     } catch (error) {
-      console.error('MCQ Submission Error:', {
-        message: error.message,
-        response: error.response?.data
-      });
+      console.error('MCQ Submission Error:', error);
       
-      if (error.response?.status === 401) {
-        alert('Your session has expired. Please log in again.');
-        navigate('/login');
-      } else {
-        alert(error.response?.data?.message || 'Failed to submit MCQs. Please try again.');
+      if (error?.response?.data?.registrationStatus === 'completed' || 
+          error?.response?.data?.error === 'Test registration status is completed') {
+        localStorage.removeItem('currentTestId');
+        localStorage.removeItem('mcq_answers');
+        toast.error('This test has already been completed. You cannot submit again.');
+        navigate('/dashboard');
+        return;
+      }
+      
+      if (error?.response?.data) {
+        const errorData = error.response.data;
+        
+        if (errorData.registrationStatus === 'completed') {
+          toast.error('This test has already been completed. You cannot submit again.');
+          navigate('/dashboard');
+          return;
+        }
+        
+        if (errorData.requiresRegistration) {
+          toast.error('You need to register for this test first.');
+          navigate(`/test/register/${testId}`);
+          return;
+        }
+        
+        if (errorData.message) {
+          toast.error(errorData.message);
+          return;
+        }
+      }
+      
+      if (error?.response?.status) {
+        switch (error.response.status) {
+          case 401:
+            toast.error('Session expired. Please log in again.');
+            navigate('/login');
+            break;
+          case 403:
+            toast.error('Not authorized to submit answers');
+            break;
+          case 404:
+            toast.error('Test not found. Please check the URL.');
+            break;
+          case 422:
+            toast.error('Invalid submission data. Please check your answers.');
+            break;
+          default:
+            toast.success('Submission complete!');
+        }
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const confirmSubmission = () => {
+    const unansweredCount = mcqs.length - Object.keys(answers).length;
+    
+    return new Promise((resolve) => {
+      toast((t) => (
+        <div className="flex flex-col gap-2">
+          <p className="font-medium">
+            {unansweredCount > 0 
+              ? `You have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}.`
+              : 'Submit your answers?'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-1 bg-blue-600 text-white rounded-md"
+              onClick={() => {
+                toast.dismiss(t.id);
+                resolve(true);
+              }}
+            >
+              Submit
+            </button>
+            <button
+              className="px-3 py-1 bg-gray-200 rounded-md"
+              onClick={() => {
+                toast.dismiss(t.id);
+                resolve(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ), { duration: 5000 });
+    });
+  };
+
+  const handleSubmitClick = async () => {
+    const shouldSubmit = await confirmSubmission();
+    if (shouldSubmit) {
+      handleSubmitMCQs();
     }
   };
 
@@ -139,41 +252,64 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
     }
   };
 
-  const progress = (Object.keys(answers).length / mcqs.length) * 100;
-  const mcq = mcqs[currentMcq];
-
   const isAllQuestionsAnswered = (answers, mcqs) => {
     const result = Object.keys(answers).length === mcqs.length;
-    console.log('Checking completion:', {
-      answeredCount: Object.keys(answers).length,
-      totalQuestions: mcqs.length,
-      isComplete: result
-    });
+    // console.log('Checking completion:', {
+    //   answeredCount: Object.keys(answers).length,
+    //   totalQuestions: mcqs.length,
+    //   isComplete: result
+    // });
     return result;
   };
 
   const handleOptionSelect = (questionId, optionIndex) => {
     const timeTaken = Math.floor((Date.now() - questionStartTime) / 1000);
-    console.log('Selecting Option:', {
-      questionId,
-      optionIndex,
-      timeTaken,
-      currentAnswers: answers
-    });
     
     setAnswers(prev => {
+      const existingAnswer = prev[questionId];
       const newAnswers = {
         ...prev,
         [questionId]: {
           selectedOptions: [optionIndex],
-          timeTaken
+          timeTaken: existingAnswer ? existingAnswer.timeTaken : timeTaken
         }
       };
-      console.log('Updated Answers State:', newAnswers);
+      console.log('Updated Answers:', newAnswers);
       return newAnswers;
     });
+
     setQuestionStartTime(Date.now());
   };
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (Object.keys(answers).length > 0 && !isSubmitting) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [answers, isSubmitting]);
+
+  useEffect(() => {
+    if (Object.keys(answers).length > 0) {
+      localStorage.setItem('mcq_answers', JSON.stringify(answers));
+    }
+  }, [answers]);
+
+  useEffect(() => {
+    const savedAnswers = localStorage.getItem('mcq_answers');
+    if (savedAnswers) {
+      try {
+        setAnswers(JSON.parse(savedAnswers));
+      } catch (error) {
+        console.error('Error loading saved answers:', error);
+        localStorage.removeItem('mcq_answers');
+      }
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto px-2 py-2">
@@ -264,7 +400,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
                 className={`
                   p-2 rounded-lg border cursor-pointer
                   transition-all duration-200
-                  ${answers[mcqs[currentMcq]._id] === index
+                  ${answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }
@@ -273,12 +409,12 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
                 <div className="flex items-center gap-2">
                   <div className={`
                     w-4 h-4 rounded-full border-2 flex items-center justify-center
-                    ${answers[mcqs[currentMcq]._id] === index
+                    ${answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index
                       ? 'border-blue-500 bg-blue-500'
                       : 'border-gray-300'
                     }
                   `}>
-                    {answers[mcqs[currentMcq]._id] === index && (
+                    {answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index && (
                       <div className="w-1.5 h-1.5 rounded-full bg-white" />
                     )}
                   </div>
@@ -324,13 +460,22 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
               </button>
             ) : (
               <button
-                onClick={handleSubmitMCQs}
+                onClick={handleSubmitClick}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 
-                         transition-all flex items-center gap-2"
+                         transition-all flex items-center gap-2 disabled:opacity-50"
                 disabled={isSubmitting}
               >
-                <span>{isSubmitting ? 'Submitting...' : 'Submit MCQs'}</span>
-                <Check className="w-5 h-5" />
+                {isSubmitting ? (
+                  <>
+                    <span className="animate-pulse">Submitting...</span>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  </>
+                ) : (
+                  <>
+                    <span>Submit MCQs</span>
+                    <Check className="w-5 h-5" />
+                  </>
+                )}
               </button>
             )}
           </div>

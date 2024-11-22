@@ -4,29 +4,42 @@ import axios from 'axios';
 
 export default function TestRegister() {
   const { uuid } = useParams();
-  const [registrationStatus, setRegistrationStatus] = useState(null);
+  const [testStatus, setTestStatus] = useState(null);
 
   useEffect(() => {
-    const checkRegistration = async () => {
+    const checkAccess = async () => {
       try {
         const response = await axios.post(`/api/tests/${uuid}/check-registration`);
-        setRegistrationStatus(response.data);
+        setTestStatus(response.data);
       } catch (error) {
-        console.error('Registration check failed:', error);
+        console.error('Access check failed:', error);
       }
     };
 
-    checkRegistration();
+    checkAccess();
   }, [uuid]);
 
   return (
     <div>
-      {registrationStatus && (
+      {testStatus && (
         <div>
-          <h2>{registrationStatus.test.title}</h2>
-          <p>Status: {registrationStatus.registration?.status || 'Not registered'}</p>
-          {registrationStatus.canRegister && (
-            <button onClick={() => handleRegister()}>Register for Test</button>
+          <h2>{testStatus.test.title}</h2>
+          {testStatus.test.type === 'practice' && (
+            <>
+              <p>This is a practice test - registration required</p>
+              {!testStatus.isRegistered && (
+                <button onClick={handleRegister}>Register for Test</button>
+              )}
+            </>
+          )}
+          {testStatus.test.type === 'public' && (
+            <button onClick={handleStartTest}>Start Test</button>
+          )}
+          {testStatus.test.type === 'assessment' && (
+            <p>{testStatus.canAccess ? 
+              'You are authorized to take this test' : 
+              'This test requires vendor approval'}
+            </p>
           )}
         </div>
       )}

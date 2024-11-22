@@ -29,12 +29,14 @@ import {
   removeAllowedUsers,
   getPublicTests,
   updateTestVisibility,
-  registerForTest,
   updateSessionStatus,
   getUserSubmissions,
   verifyTestByUuid,
   checkTestRegistration,
-  getTestIdByUuid
+  getTestIdByUuid,
+  getFeaturedPublicTests,
+  getPublicTestCategories,
+  registerForTest
 } from "../controllers/test.controller.js";
 import { auth } from "../middleware/auth.js";
 import { checkRole } from "../middleware/checkRole.js";
@@ -45,6 +47,7 @@ import User from '../models/user.model.js';
 import { validateTestAccess } from '../middleware/validateTestAccess.js';
 import { validateProfile } from '../middleware/validateProfile.js';
 import jwt from 'jsonwebtoken';
+import TestRegistration from '../models/testRegistration.model.js';
 
 const router = express.Router();
 
@@ -1557,83 +1560,9 @@ router.delete(
  *                     limit:
  *                       type: number
  */
-router.get("/public", async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    // Build query based on filters
-    let query = {
-      'accessControl.type': 'public',
-      status: 'published'
-    };
-
-    // Add optional filters
-    if (req.query.category) {
-      query.category = req.query.category;
-    }
-    if (req.query.difficulty) {
-      query.difficulty = req.query.difficulty;
-    }
-    if (req.query.type) {
-      query.type = req.query.type;
-    }
-    if (req.query.search) {
-      query.$or = [
-        { title: { $regex: req.query.search, $options: 'i' } },
-        { description: { $regex: req.query.search, $options: 'i' } }
-      ];
-    }
-
-    // Get total count for pagination
-    const total = await Test.countDocuments(query);
-
-    // Get tests
-    const tests = await Test.find(query)
-      .select('title description duration totalMarks type vendor questionCounts createdAt updatedAt')
-      .populate('vendor', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Format response
-    const formattedTests = tests.map(test => ({
-      _id: test._id,
-      title: test.title,
-      description: test.description,
-      duration: test.duration,
-      totalMarks: test.totalMarks,
-      type: test.type,
-      vendor: {
-        name: test.vendor.name,
-        email: test.vendor.email
-      },
-      questionCounts: {
-        mcq: test.mcqs?.length || 0,
-        coding: test.codingChallenges?.length || 0
-      },
-      createdAt: test.createdAt,
-      updatedAt: test.updatedAt
-    }));
-
-    res.json({
-      tests: formattedTests,
-      pagination: {
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-        limit
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching public tests:', error);
-    res.status(500).json({ 
-      message: 'Error fetching public tests', 
-      error: error.message 
-    });
-  }
-});
+router.get("/public", getPublicTests);
+router.get("/public/featured", getFeaturedPublicTests);
+router.get("/public/categories", getPublicTestCategories);
 
 /**
  * @swagger
@@ -1883,27 +1812,38 @@ router.post("/verify/:uuid", verifyTestByUuid);
  *         schema:
  *           type: string
  *         description: UUID of the test
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               token:
- *                 type: string
- *                 description: Access token for private tests (optional)
  *     responses:
  *       200:
- *         description: Successfully registered for test
+ *         description: Successfully registered for test or already registered
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 sessionId:
+ *                 message:
  *                   type: string
- *                   description: ID of the created test session
+ *                 registration:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     test:
+ *                       type: string
+ *                     user:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                     testType:
+ *                       type: string
+ *                     registrationType:
+ *                       type: string
+ *                     isVendorAttempt:
+ *                       type: boolean
+ *                     registeredAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid request or registration error
  *       401:
  *         description: Unauthorized - User not logged in
  *       403:
@@ -1911,7 +1851,45 @@ router.post("/verify/:uuid", verifyTestByUuid);
  *       404:
  *         description: Test not found
  */
-router.post("/register/:uuid", auth, registerForTest);
+router.post("/register/:uuid", auth, async (req, res) => {
+  try {
+    // First get the test by UUID
+    const test = await Test.findOne({ uuid: req.params.uuid });
+    if (!test) {
+      return res.status(404).json({
+        message: "Test not found"
+      });
+    }
+
+    // Check if already registered using the test's _id
+    const existingRegistration = await TestRegistration.findOne({
+      test: test._id,  // Use the actual ObjectId from the test
+      user: req.user._id
+    });
+
+    if (existingRegistration) {
+      return res.status(200).json({
+        message: "Already registered for this test",
+        registration: existingRegistration
+      });
+    }
+
+    // Continue with registration logic...
+    const registration = await registerForTest(req, res);
+    
+    return res.status(201).json({
+      message: "Successfully registered for test",
+      registration
+    });
+
+  } catch (error) {
+    console.error('Registration error:', error);
+    return res.status(500).json({
+      message: "Error registering for test",
+      error: error.message
+    });
+  }
+});
 
 /**
  * @swagger
@@ -2056,6 +2034,74 @@ router.post("/:uuid/check-registration", auth, checkTestRegistration);
  *         description: Test not found
  */
 router.get("/parse/:uuid", getTestIdByUuid);
+
+/**
+ * @swagger
+ * /api/tests/{uuid}/session:
+ *   post:
+ *     summary: Create or resume a test session
+ *     tags: [Tests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: UUID of the test
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deviceInfo:
+ *                 type: object
+ *                 properties:
+ *                   userAgent: 
+ *                     type: string
+ *                   platform:
+ *                     type: string
+ *                   screenResolution:
+ *                     type: string
+ *                   language:
+ *                     type: string
+ *     responses:
+ *       201:
+ *         description: Session created successfully
+ *       200:
+ *         description: Existing session found
+ *       404:
+ *         description: Test not found
+ */
+router.post("/:uuid/session", auth, startTestSession);
+
+/**
+ * @swagger
+ * /api/tests/{uuid}/session/{sessionId}/end:
+ *   post:
+ *     summary: End a test session
+ *     tags: [Tests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Session ended successfully
+ */
+router.post("/:uuid/session/:sessionId/end", auth, endTestSession);
 
 export default router;
 

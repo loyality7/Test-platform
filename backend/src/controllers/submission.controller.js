@@ -36,6 +36,8 @@ export const submitMCQ = async (req, res) => {
     
     // First find the test using Test model
     const test = await Test.findById(testId);
+    let testData = test;
+
     if (!test) {
       // Try finding by UUID if ID lookup fails
       const testByUuid = await Test.findOne({ uuid: testId });
@@ -45,22 +47,39 @@ export const submitMCQ = async (req, res) => {
           requiresRegistration: false 
         });
       }
-      // Use the actual MongoDB _id for further queries
-      req.body.testId = testByUuid._id;
+      testData = testByUuid;
     }
 
     // Check test registration with expanded status check
     const registration = await TestRegistration.findOne({
-      test: test?._id || testByUuid._id,
+      test: testData._id,
       user: req.user._id,
       status: { $in: ['registered', 'started'] }
     });
 
-    // Handle registration cases
+    // Enhanced registration check with detailed response
     if (!registration) {
+      // Check if user has any registration for this test
+      const anyRegistration = await TestRegistration.findOne({
+        test: testData._id,
+        user: req.user._id
+      });
+
+      if (anyRegistration) {
+        // Registration exists but with invalid status
+        return res.status(403).json({
+          error: `Test registration status is ${anyRegistration.status}`,
+          requiresRegistration: false,
+          registrationStatus: anyRegistration.status
+        });
+      }
+
+      // No registration found at all
       return res.status(403).json({
         error: "Not registered for test",
-        requiresRegistration: true
+        requiresRegistration: true,
+        testId: testData._id,
+        uuid: testData.uuid
       });
     }
 
@@ -71,16 +90,20 @@ export const submitMCQ = async (req, res) => {
       await registration.save();
     }
 
+    // Process submissions
+    let totalMarksObtained = 0;
+    let correctAnswers = 0;
+
     // Find or create submission document
     let submission = await Submission.findOne({
       user: req.user._id,
-      test: test?._id || testByUuid._id
+      test: testData._id
     });
 
     if (!submission) {
       submission = new Submission({
         user: req.user._id,
-        test: test?._id || testByUuid._id,
+        test: testData._id,
         status: 'in_progress',
         startTime: registration.startTime,
         mcqSubmission: {
@@ -90,10 +113,7 @@ export const submitMCQ = async (req, res) => {
       });
     }
 
-    // Process submissions
-    let totalMarksObtained = 0;
-    let correctAnswers = 0;
-
+    // Process each submission
     for (const { questionId, selectedOptions, timeTaken } of submissions) {
       const mcq = testData.mcqs.find(m => m._id.toString() === questionId);
       if (!mcq) continue;
@@ -121,16 +141,8 @@ export const submitMCQ = async (req, res) => {
     submission.mcqSubmission.totalScore = totalMarksObtained;
     submission.mcqSubmission.submittedAt = new Date();
     submission.status = 'mcq_completed';
-    
-    // Update registration
-    registration.status = 'completed';
-    registration.completedAt = new Date();
 
-    // Save everything
-    await Promise.all([
-      submission.save(),
-      registration.save()
-    ]);
+    await submission.save();
 
     res.status(201).json({
       submissionId: submission._id,

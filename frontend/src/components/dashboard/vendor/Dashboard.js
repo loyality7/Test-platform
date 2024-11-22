@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { Box, Grid, Typography, CircularProgress, CssBaseline } from '@mui/material';
 import { useQuery } from 'react-query';
-import { getMethod } from '../../../helpers';
+import apiService from '../../../services/api';
 import DashboardStats from './DashboardStats';
 import RecentActivity from './RecentActivity';
 import TestDistribution from './TestDistribution';
@@ -20,15 +20,17 @@ const Dashboard = () => {
         throw new Error('Not authenticated');
       }
       
-      const response = await getMethod('vendor/dashboard', true);
+      const response = await apiService.get('/vendor/dashboard');
       
       if (process.env.NODE_ENV === 'development') {
         console.log('Dashboard response:', response);
       }
 
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to fetch dashboard data');
+      if (!response || response.error) {
+        throw new Error(response?.error || 'Failed to fetch dashboard data');
       }
+      
+      const data = response?.data || {};
       
       return {
         overview: {
@@ -36,16 +38,16 @@ const Dashboard = () => {
           activeTests: 0,
           totalCandidates: 0,
           pendingInvitations: 0,
-          ...response.data?.overview
+          ...(data.overview || {})
         },
         performance: {
           averageScore: 0,
           passRate: 0,
           totalAttempts: 0,
-          ...response.data?.performance
+          ...(data.performance || {})
         },
-        testDistribution: response.data?.testDistribution || {},
-        recentActivity: response.data?.recentActivity || []
+        testDistribution: data.testDistribution || {},
+        recentActivity: data.recentActivity || []
       };
     },
     {

@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import TestRegistration from "../models/testRegistration.model.js";
 import Submission from '../models/submission.model.js';
+import { LANGUAGE_IDS } from '../constants/languages.js';
 
 export const createTest = async (req, res) => {
   try {
@@ -51,14 +52,28 @@ export const createTest = async (req, res) => {
         });
       }
 
-      // Validate language implementations
-      for (const [lang, impl] of Object.entries(challenge.languageImplementations)) {
-        if (!impl.visibleCode || !impl.invisibleCode) {
-          return res.status(400).json({
-            error: `Both visibleCode and invisibleCode are required for language: ${lang}`
-          });
+      // Map allowed languages to Judge0 IDs
+      challenge.allowedLanguages = challenge.allowedLanguages.map(lang => {
+        const langId = LANGUAGE_IDS[lang.toLowerCase()];
+        if (!langId) {
+          throw new Error(`Unsupported language: ${lang}`);
         }
+        return langId;
+      });
+
+      // Map language implementations to use Judge0 IDs as keys
+      const mappedImplementations = {};
+      for (const [lang, impl] of Object.entries(challenge.languageImplementations)) {
+        const langId = LANGUAGE_IDS[lang.toLowerCase()];
+        if (!langId) {
+          throw new Error(`Unsupported language in implementations: ${lang}`);
+        }
+        if (!impl.visibleCode || !impl.invisibleCode) {
+          throw new Error(`Both visibleCode and invisibleCode are required for language: ${lang}`);
+        }
+        mappedImplementations[langId] = impl;
       }
+      challenge.languageImplementations = mappedImplementations;
 
       // Validate test cases if provided
       if (challenge.testCases) {
@@ -101,7 +116,10 @@ export const createTest = async (req, res) => {
 
     res.status(201).json(test);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: error.message,
+      details: "Failed to create test with language mappings"
+    });
   }
 };
 
@@ -112,16 +130,6 @@ export const getTests = async (req, res) => {
     // If user is authenticated
     if (req.user) {
       if (req.user.role === 'user') {
-        // Get user's submissions using correct model
-        const userSubmissions = await Submission.find({ 
-          user: req.user._id 
-        }).lean();
-
-        // Create a map of test submissions for quick lookup
-        const submissionMap = new Map(
-          userSubmissions.map(sub => [sub.test.toString(), sub])
-        );
-
         query = {
           status: 'published',
           $or: [
@@ -646,8 +654,8 @@ export const addCodingChallenges = async (req, res) => {
     test.codingChallenges.push(...challengesToAdd);
     
     // Recalculate total marks
-    test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0) + 
-                      (test.codingChallenges?.reduce((sum, challenge) => sum + challenge.marks, 0) || 0);
+    test.totalMarks = test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) + 
+                      test.codingChallenges?.reduce((sum, challenge) => sum + challenge.marks, 0);
     test.passingMarks = Math.ceil(test.totalMarks * 0.4);
     
     await test.save();
@@ -745,8 +753,8 @@ export const updateCodingChallenge = async (req, res) => {
     
     // Recalculate total marks if marks were updated
     if (marks) {
-      test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0) +
-                       test.codingChallenges.reduce((sum, ch) => sum + ch.marks, 0);
+      test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0) + 
+                       (test.codingChallenges?.reduce((sum, challenge) => sum + challenge.marks, 0) || 0);
       test.passingMarks = Math.ceil(test.totalMarks * 0.4);
     }
 
@@ -937,81 +945,92 @@ export const deleteTestCase = async (req, res) => {
 // Test Session Management Functions
 export const startTestSession = async (req, res) => {
   try {
-    const { testId } = req.body;
-    
-    // Check if there's already an active session
+    const { uuid } = req.params;
+    const { deviceInfo } = req.body;
+
+    // Find test by UUID
+    const test = await Test.findOne({ uuid });
+    if (!test) {
+      return res.status(404).json({ message: 'Test not found' });
+    }
+
+    // Check for existing active session
     const existingSession = await TestSession.findOne({
-      test: testId,
+      test: test._id,
       user: req.user._id,
-      status: { $in: ['started', 'in_progress'] }
+      status: 'active'
     });
 
     if (existingSession) {
-      return res.status(400).json({
-        error: "Active session already exists",
-        sessionId: existingSession._id
+      return res.status(200).json({
+        message: 'Existing session found',
+        session: existingSession
       });
     }
 
     // Create new session
     const session = await TestSession.create({
-      test: testId,
+      test: test._id,
       user: req.user._id,
       startTime: new Date(),
-      status: 'started',
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      browserSwitches: 0,
-      currentQuestion: 0
+      duration: test.duration,
+      status: 'active',
+      deviceInfo: {
+        userAgent: deviceInfo.userAgent,
+        platform: deviceInfo.platform,
+        screenResolution: deviceInfo.screenResolution,
+        language: deviceInfo.language,
+        ip: req.ip
+      }
     });
 
-    res.status(201).json({
-      message: "Test session started successfully",
-      sessionId: session._id,
-      startTime: session.startTime,
-      status: session.status
+    return res.status(201).json({
+      message: 'Session created successfully',
+      session: {
+        _id: session._id,
+        startTime: session.startTime,
+        duration: session.duration,
+        status: session.status
+      }
     });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error in startTestSession:', error);
+    return res.status(500).json({
+      message: 'Error creating test session',
+      error: error.message
+    });
   }
 };
 
 export const endTestSession = async (req, res) => {
   try {
-    const { sessionId } = req.params;
-    const { reason } = req.body; // Optional reason for ending session
+    const { uuid, sessionId } = req.params;
 
     const session = await TestSession.findById(sessionId);
-    
     if (!session) {
-      return res.status(404).json({ error: "Test session not found" });
+      return res.status(404).json({ message: 'Session not found' });
     }
 
-    // Verify the session belongs to the current user
-    if (session.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Not authorized to end this session" });
-    }
-
-    // Update session status
-    session.endTime = new Date();
     session.status = 'completed';
-    if (reason) {
-      session.proctorNotes.push({
-        note: `Session ended: ${reason}`,
-        timestamp: new Date()
-      });
-    }
-
+    session.endTime = new Date();
     await session.save();
 
     res.json({
-      message: "Test session ended successfully",
-      sessionId: session._id,
-      duration: session.endTime - session.startTime,
-      status: session.status
+      message: 'Session ended successfully',
+      session: {
+        _id: session._id,
+        status: session.status,
+        endTime: session.endTime
+      }
     });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error in endTestSession:', error);
+    res.status(500).json({
+      message: 'Error ending test session',
+      error: error.message
+    });
   }
 };
 
@@ -1183,773 +1202,41 @@ export const getTestInvitations = async (req, res) => {
   }
 };
 
-export const getTestByUuid = async (req, res) => {
-  try {
-    console.log('UUID received:', req.params.uuid); // Add logging for debugging
-
-    const test = await Test.findOne({ uuid: req.params.uuid });
-    
-    if (!test) {
-      console.log('Test not found for UUID:', req.params.uuid); // Add logging
-      return res.status(404).json({ 
-        error: "Test not found",
-        uuid: req.params.uuid 
-      });
-    }
-
-    // Generate shareable link
-    const shareableLink = `${process.env.FRONTEND_URL}/test/take/${test.uuid}`;
-
-    // If test is private, include the sharing token
-    const finalLink = test.accessControl?.type === 'private' 
-      ? `${shareableLink}?token=${test.sharingToken}`
-      : shareableLink;
-
-    console.log('Sending response with link:', finalLink); // Add logging
-
-    res.json({
-      message: "Test link generated successfully",
-      test: {
-        id: test._id,
-        title: test.title,
-        type: test.type,
-        accessControl: test.accessControl?.type || 'private',
-        duration: test.duration,
-        totalMarks: test.totalMarks
-      },
-      shareableLink: finalLink
-    });
-
-  } catch (error) {
-    console.error('Error in getTestByUuid:', error); // Add logging
-    res.status(500).json({ 
-      error: "Internal server error",
-      message: error.message,
-      uuid: req.params.uuid
-    });
-  }
-};
-
-// Test Completion Rate
-export const getTestCompletionRate = async (req, res) => {
-  try {
-    let query = {};
-    if (req.user.role === 'vendor') {
-      query['test.vendor'] = req.user._id;
-    }
-
-    const stats = await TestSession.aggregate([
-      {
-        $lookup: {
-          from: 'tests',
-          localField: 'test',
-          foreignField: '_id',
-          as: 'test'
-        }
-      },
-      { $unwind: '$test' },
-      { $match: query },
-      {
-        $group: {
-          _id: '$test._id',
-          testTitle: { $first: '$test.title' },
-          totalSessions: { $sum: 1 },
-          completedSessions: {
-            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
-          }
-        }
-      },
-      {
-        $project: {
-          testTitle: 1,
-          totalSessions: 1,
-          completedSessions: 1,
-          completionRate: {
-            $multiply: [
-              { $divide: ['$completedSessions', '$totalSessions'] },
-              100
-            ]
-          }
-        }
-      }
-    ]);
-
-    res.json(stats);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Average Score Analytics
-export const getAverageScores = async (req, res) => {
-  try {
-    let query = {};
-    if (req.user.role === 'vendor') {
-      query['test.vendor'] = req.user._id;
-    }
-
-    const stats = await TestResult.aggregate([
-      {
-        $lookup: {
-          from: 'tests',
-          localField: 'test',
-          foreignField: '_id',
-          as: 'test'
-        }
-      },
-      { $unwind: '$test' },
-      { $match: query },
-      {
-        $group: {
-          _id: '$test._id',
-          testTitle: { $first: '$test.title' },
-          totalScores: { $sum: 1 },
-          totalScore: { $sum: '$score' },
-          averageScore: { $avg: '$score' }
-        }
-      },
-      {
-        $project: {
-          testTitle: 1,
-          totalScores: 1,
-          totalScore: 1,
-          averageScore: 1
-        }
-      }
-    ]);
-
-    res.json(stats);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Update coding challenge languages
-export const updateCodingChallenges = async (req, res) => {
-  try {
-    const test = await Test.findById(req.params.testId);
-    
-    if (!test) {
-      return res.status(404).json({ error: "Test not found" });
-    }
-
-    // Check authorization
-    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
-
-    // Update each coding challenge with default allowed languages
-    test.codingChallenges = test.codingChallenges.map(challenge => ({
-      ...challenge,
-      allowedLanguages: ['javascript', 'python', 'java'] // Add default languages
-    }));
-
-    await test.save();
-    
-    res.json({
-      message: "Coding challenges updated successfully",
-      test
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Update test access control
-export const updateTestAccess = async (req, res) => {
-  try {
-    const { testId } = req.params;
-    const { type, userLimit, allowedUsers } = req.body;
-
-    const test = await Test.findById(testId);
-    if (!test) {
-      return res.status(404).json({ error: "Test not found" });
-    }
-
-    // Check authorization
-    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
-
-    // Validate user limit
-    if (type === 'private' && userLimit > 0 && allowedUsers?.length > userLimit) {
-      return res.status(400).json({ 
-        error: "Number of allowed users exceeds the user limit" 
-      });
-    }
-
-    // Update access control
-    test.accessControl = {
-      type: type || test.accessControl.type,
-      userLimit: userLimit ?? test.accessControl.userLimit,
-      allowedUsers: allowedUsers || test.accessControl.allowedUsers,
-      currentUserCount: allowedUsers ? allowedUsers.length : test.accessControl.currentUserCount
-    };
-
-    await test.save();
-
-    res.json({
-      message: "Test access control updated successfully",
-      accessControl: test.accessControl
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Add allowed users to test
-export const addAllowedUsers = async (req, res) => {
-  try {
-    const { testId } = req.params;
-    const { userIds } = req.body;
-
-    const test = await Test.findById(testId);
-    if (!test) {
-      return res.status(404).json({ error: "Test not found" });
-    }
-
-    // Check authorization
-    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
-
-    // Check if test is private
-    if (test.accessControl.type !== 'private') {
-      return res.status(400).json({ 
-        error: "Cannot add allowed users to public test" 
-      });
-    }
-
-    // Check user limit
-    const newUserCount = test.accessControl.currentUserCount + userIds.length;
-    if (newUserCount > test.accessControl.userLimit) {
-      return res.status(400).json({ 
-        error: "Number of allowed users exceeds the user limit" 
-      });
-    }
-
-    // Add allowed users to test
-    test.accessControl.allowedUsers.push(...userIds);
-    test.accessControl.currentUserCount = newUserCount;
-
-    await test.save();
-
-    res.json({
-      message: "Allowed users added successfully",
-      accessControl: test.accessControl
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Remove allowed users from test
-export const removeAllowedUsers = async (req, res) => {
-  try {
-    const { testId } = req.params;
-    const { userIds } = req.body;
-
-    const test = await Test.findById(testId);
-    if (!test) {
-      return res.status(404).json({ error: "Test not found" });
-    }
-
-    // Check authorization
-    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
-
-    // Remove users
-    test.accessControl.allowedUsers = test.accessControl.allowedUsers.filter(
-      id => !userIds.includes(id.toString())
-    );
-    test.accessControl.currentUserCount = test.accessControl.allowedUsers.length;
-
-    await test.save();
-
-    res.json({
-      message: "Users removed successfully",
-      accessControl: test.accessControl
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Get practice tests
-export const getPracticeTests = async (req, res) => {
-  try {
-    const { category, difficulty } = req.query;
-    
-    // Build query
-    const query = {
-      type: 'practice',
-      status: 'published',
-      $or: [
-        { 'accessControl.type': 'public' },
-        { 
-          'accessControl.type': 'private',
-          'accessControl.allowedUsers': req.user._id 
-        }
-      ]
-    };
-
-    // Add optional filters
-    if (category) query.category = category;
-    if (difficulty) query.difficulty = difficulty;
-
-    const practiceTests = await Test.find(query)
-      .select('title description category difficulty duration totalMarks')
-      .populate('vendor', 'name')
-      .sort({ difficulty: 1, category: 1 });
-
-    res.json(practiceTests);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const updateTestVisibility = async (req, res) => {
-  try {
-    const { testId } = req.params;
-    const { visibility } = req.body;
-
-    // Add 'practice' as a valid visibility type
-    if (!['public', 'private', 'practice'].includes(visibility)) {
-      return res.status(400).json({ 
-        error: "Visibility must be either 'public', 'private', or 'practice'" 
-      });
-    }
-
-    // First update the test
-    const test = await Test.findOneAndUpdate(
-      { _id: testId },
-      {
-        $set: {
-          'accessControl.type': visibility,
-          type: visibility === 'practice' ? 'practice' : 'assessment'
-        }
-      },
-      { new: true }
-    );
-    
-    if (!test) {
-      return res.status(404).json({ error: "Test not found" });
-    }
-
-    // Check authorization
-    if (req.user.role === 'vendor' && 
-        test.vendor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ 
-        error: "Not authorized to change this test's visibility" 
-      });
-    }
-
-    // Update all existing registrations for this test
-    await TestRegistration.updateMany(
-      { test: testId },
-      { 
-        $set: { 
-          testType: visibility,
-          registrationType: visibility === 'practice' ? 'practice' : 'assessment'
-        }
-      }
-    );
-
-    res.json({
-      message: "Test visibility and registrations updated successfully",
-      visibility: test.accessControl.type,
-      type: test.type
-    });
-  } catch (error) {
-    console.error('Error updating test visibility:', error);
-    res.status(500).json({ 
-      error: "Failed to update test visibility",
-      message: error.message 
-    });
-  }
-};
-
-export const updateTestType = async (req, res) => {
-  try {
-    const { testId } = req.params;
-    const { type } = req.body;
-
-    if (!['assessment', 'practice'].includes(type)) {
-      return res.status(400).json({ 
-        error: "Type must be either 'assessment' or 'practice'" 
-      });
-    }
-
-    const test = await Test.findById(testId);
-    if (!test) {
-      return res.status(404).json({ error: "Test not found" });
-    }
-
-    // Check authorization for vendors
-    if (req.user.role === 'vendor' && 
-        test.vendor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
-
-    test.type = type;
-    await test.save();
-
-    res.json({
-      message: "Test type updated successfully",
-      type: test.type
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-/**
- * Get all public tests with filtering and pagination
- */
-export const getPublicTests = async (req, res) => {
-  try {
-    const { page = 1, limit = 10, category, difficulty, type, search } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    // Build filter
-    const filter = {
-      status: 'published',
-      'accessControl.type': 'public'  // Changed from $or to direct match
-    };
-
-    // Add optional filters
-    if (category) filter.category = category;
-    if (difficulty) filter.difficulty = difficulty;
-    if (type) filter.type = type;
-    
-    // Add search functionality
-    if (search) {
-      filter.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    // Get total count for pagination
-    const total = await Test.countDocuments(filter);
-
-    // Get filtered and paginated tests
-    const tests = await Test.find(filter)
-      .select('-mcqs.correctOptions -codingChallenges.testCases')  // Exclude sensitive data
-      .populate('vendor', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
-
-    // Transform the response
-    const transformedTests = tests.map(test => ({
-      _id: test._id,
-      title: test.title,
-      description: test.description,
-      category: test.category,
-      difficulty: test.difficulty,
-      duration: test.duration,
-      totalMarks: test.totalMarks,
-      type: test.type,
-      vendor: {
-        name: test.vendor?.name,
-        email: test.vendor?.email
-      },
-      questionCounts: {
-        mcq: test.mcqs?.length || 0,
-        coding: test.codingChallenges?.length || 0
-      },
-      createdAt: test.createdAt,
-      updatedAt: test.updatedAt
-    }));
-
-    // Calculate total pages
-    const pages = Math.ceil(total / parseInt(limit));
-
-    res.json({
-      tests: transformedTests,
-      pagination: {
-        total,
-        page: parseInt(page),
-        pages,
-        limit: parseInt(limit)
-      }
-    });
-
-  } catch (error) {
-    console.error('Error getting public tests:', error);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: error.message 
-    });
-  }
-};
-
-export const registerForTest = async (req, res) => {
-  try {
-    const { uuid } = req.params;
-    const { token } = req.body;
-    
-    const test = await Test.findOne({ uuid })
-      .populate('vendor', 'name email')
-      .populate('accessControl.allowedUsers');
-    
-    if (!test) {
-      return res.status(404).json({ message: 'Test not found' });
-    }
-
-    // Validate test access
-    const isAdmin = req.user.role === 'admin';
-    const isVendor = test.vendor._id.toString() === req.user._id.toString();
-    const isPublic = test.accessControl.type === 'public';
-    const isPractice = test.type === 'practice';
-    const isAllowedUser = test.accessControl.allowedUsers?.some(
-      user => user._id.toString() === req.user._id.toString()
-    );
-
-    // Check if user has permission to register
-    let canRegister = false;
-    let message = '';
-
-    if (isAdmin) {
-      canRegister = true;
-      message = 'Admin access granted';
-    } else if (isVendor) {
-      canRegister = true;
-      message = 'Vendor access granted';
-    } else if (isPublic || isPractice) {
-      canRegister = true;
-      message = `${isPublic ? 'Public' : 'Practice'} test access granted`;
-    } else if (isAllowedUser) {
-      canRegister = true;
-      message = 'Allowed user access granted';
-    } else if (test.accessControl.type === 'private' && token === test.sharingToken) {
-      canRegister = true;
-      message = 'Token access granted';
-    } else {
-      return res.status(403).json({ 
-        message: 'Not authorized to register for this test',
-        requiresToken: test.accessControl.type === 'private'
-      });
-    }
-
-    // Check for existing registration
-    const existingRegistration = await TestRegistration.findOne({
-      test: test._id,
-      user: req.user._id
-    });
-
-    if (existingRegistration) {
-      return res.status(200).json({
-        message: 'User has already registered for this test',
-        registration: {
-          registeredAt: existingRegistration.createdAt,
-          status: existingRegistration.status,
-          testType: existingRegistration.testType,
-          registrationType: existingRegistration.registrationType
-        }
-      });
-    }
-
-    // Create test registration
-    const registration = await TestRegistration.create({
-      test: test._id,
-      user: req.user._id,
-      testType: test.accessControl.type,
-      registrationType: test.type,
-      status: 'registered',
-      isVendorAttempt: isVendor,
-      startTime: new Date()
-    });
-
-    // Create test session
-    const session = await TestSession.create({
-      test: test._id,
-      user: req.user._id,
-      status: 'created',
-      isVendorAttempt: isVendor
-    });
-
-    res.json({
-      message: `Successfully registered for test - ${message}`,
-      sessionId: session._id,
-      uuid: test.uuid,
-      status: 'registered',
-      registration: {
-        id: registration._id,
-        registeredAt: registration.createdAt,
-        status: registration.status,
-        testType: registration.testType,
-        registrationType: registration.registrationType
-      }
-    });
-
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ 
-      message: 'Error registering for test',
-      error: error.message 
-    });
-  }
-};
-
-// Update session status (for monitoring)
-export const updateSessionStatus = async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    const { event, details } = req.body;
-
-    const session = await TestSession.findById(sessionId);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-
-    // Update based on event type
-    switch (event) {
-      case 'browser_switch':
-        session.browserSwitches += 1;
-        session.proctorNotes.push({
-          note: 'Browser switch detected',
-          timestamp: new Date()
-        });
-        break;
-      case 'tab_switch':
-        session.tabSwitches += 1;
-        session.proctorNotes.push({
-          note: 'Tab switch detected',
-          timestamp: new Date()
-        });
-        break;
-      case 'question_update':
-        session.currentQuestion = details.questionNumber;
-        break;
-      // Add more event types as needed
-    }
-
-    session.status = 'in_progress';
-    await session.save();
-
-    res.json({
-      message: "Session status updated",
-      status: session.status,
-      browserSwitches: session.browserSwitches,
-      tabSwitches: session.tabSwitches,
-      currentQuestion: session.currentQuestion
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Add a new endpoint specifically for user submissions
-export const getUserSubmissions = async (req, res) => {
-  try {
-    const userId = req.params.userId;
-
-    // Verify user has permission to access these submissions
-    if (req.user.role !== 'admin' && req.user._id.toString() !== userId) {
-      return res.status(403).json({ error: 'Not authorized to access these submissions' });
-    }
-
-    // Get all submissions for the user
-    const submissions = await Submission.find({ user: userId })
-      .populate({
-        path: 'test',
-        select: 'title type category difficulty totalMarks passingMarks'
-      })
-      .sort({ submittedAt: -1 })
-      .lean();
-
-    // Separate MCQ and Coding submissions
-    const transformedSubmissions = {
-      mcq: submissions.filter(sub => sub.mcqAnswers?.length > 0).map(sub => ({
-        testId: sub.test._id,
-        testTitle: sub.test.title,
-        type: sub.test.type,
-        category: sub.test.category,
-        difficulty: sub.test.difficulty,
-        score: sub.score,
-        totalMarks: sub.test.totalMarks,
-        passingMarks: sub.test.passingMarks,
-        status: sub.status,
-        submittedAt: sub.submittedAt,
-        answers: sub.mcqAnswers
-      })),
-      coding: submissions.filter(sub => sub.codingAnswers?.length > 0).map(sub => ({
-        testId: sub.test._id,
-        testTitle: sub.test.title,
-        type: sub.test.type,
-        category: sub.test.category,
-        difficulty: sub.test.difficulty,
-        score: sub.score,
-        totalMarks: sub.test.totalMarks,
-        passingMarks: sub.test.passingMarks,
-        status: sub.status,
-        submittedAt: sub.submittedAt,
-        solutions: sub.codingAnswers
-      }))
-    };
-
-    res.json(transformedSubmissions);
-  } catch (error) {
-    console.error('Error in getUserSubmissions:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch submissions',
-      message: error.message 
-    });
-  }
-};
-
-// Add this new controller function
 export const verifyTestByUuid = async (req, res) => {
   try {
-    console.log('Verifying test with UUID:', req.params.uuid); // Debug log
-
-    const test = await Test.findOne({ uuid: req.params.uuid })
-      .select('_id uuid title description duration type category difficulty totalMarks status accessControl vendor')
-      .populate('vendor', 'name email')
-      .lean();
-
+    const { uuid } = req.params;
+    
+    const test = await Test.findOne({ uuid })
+      .select('title description duration type category totalMarks status') // Select only needed fields
+      .populate('vendor', 'name email');
+    
     if (!test) {
-      console.log('Test not found for UUID:', req.params.uuid); // Debug log
-      return res.status(404).json({ 
-        message: 'Test not found',
-        uuid: req.params.uuid 
+      return res.status(404).json({
+        message: 'Test not found'
       });
     }
 
-    console.log('Found test:', test); // Debug log
-
-    const response = {
+    // Return in the expected structure
+    return res.status(200).json({
+      message: 'Test verified successfully',
       test: {
-        _id: test._id.toString(),
         uuid: test.uuid,
         title: test.title,
         description: test.description,
         duration: test.duration,
         type: test.type,
         category: test.category,
-        difficulty: test.difficulty,
         totalMarks: test.totalMarks,
-        accessControl: test.accessControl?.type || 'public',
-        vendor: {
-          name: test.vendor?.name || 'Anonymous',
-          email: test.vendor?.email
-        }
+        status: test.status,
+        vendor: test.vendor
       }
-    };
-
-    console.log('Sending response:', response); // Debug log
-    res.json(response);
+    });
 
   } catch (error) {
     console.error('Error in verifyTestByUuid:', error);
-    res.status(500).json({ 
+    return res.status(500).json({
       message: 'Error verifying test',
-      error: error.message,
-      uuid: req.params.uuid
+      error: error.message
     });
   }
 };
@@ -1959,108 +1246,70 @@ export const checkTestRegistration = async (req, res) => {
     const { uuid } = req.params;
     
     const test = await Test.findOne({ uuid })
-      .populate('vendor', 'name email')
-      .populate('accessControl.allowedUsers');
+      .populate('vendor', 'name email');
     
     if (!test) {
-      return res.status(200).json({ 
+      return res.status(404).json({ 
         message: 'Test not found',
-        canRegister: false,
-        uuid
+        canAccess: false,
+        requiresRegistration: false
       });
     }
 
-    // Check various authorization conditions
-    const isAdmin = req.user.role === 'admin';
-    const isVendor = test.vendor._id.toString() === req.user._id.toString();
-    const isPublic = test.accessControl.type === 'public';
-    const isAllowedUser = test.accessControl.allowedUsers?.some(
-      user => user._id.toString() === req.user._id.toString()
-    );
+    // Check access based on test type
+    if (test.type === 'practice') {
+      // Practice tests require registration
+      const existingRegistration = await TestRegistration.findOne({
+        test: test._id,
+        user: req.user._id
+      });
 
-    // Check existing registration and update if needed
-    const existingRegistration = await TestRegistration.findOne({
-      test: test._id,
-      user: req.user._id
-    });
-
-    // If registration exists, update it to match current test settings
-    if (existingRegistration) {
-      existingRegistration.testType = test.accessControl.type;
-      existingRegistration.registrationType = test.type;
-      await existingRegistration.save();
-    }
-
-    // Determine if user can register
-    let canRegister = false;
-    let message = '';
-    let registrationStatus = null;
-
-    if (existingRegistration) {
-      canRegister = false;
-      message = 'User has already registered for this test';
-      registrationStatus = {
-        registeredAt: existingRegistration.createdAt,
-        status: existingRegistration.status,
-        testType: existingRegistration.testType,
-        registrationType: existingRegistration.registrationType
-      };
-    } else if (isAdmin) {
-      canRegister = true;
-      message = 'Admin has access to all tests';
-    } else if (isVendor) {
-      canRegister = true;
-      message = 'Vendor can access their own test';
-    } else if (isPublic) {
-      canRegister = true;
-      message = 'Test is public and available for all users';
-    } else if (isAllowedUser) {
-      canRegister = true;
-      message = 'User is in the allowed users list';
-    } else {
-      message = 'User is not authorized to register for this test';
-    }
-
-    const response = {
-      canRegister,
-      message,
-      user: {
-        id: req.user._id,
-        name: req.user.name,
-        email: req.user.email,
-        role: req.user.role
-      },
-      test: {
-        id: test._id,
-        uuid: test.uuid,
-        title: test.title,
-        type: test.type,
-        duration: test.duration,
-        totalMarks: test.totalMarks,
-        accessControl: test.accessControl.type,
-        vendor: {
-          id: test.vendor._id,
-          name: test.vendor.name,
-          email: test.vendor.email
+      return res.json({
+        canAccess: true,
+        requiresRegistration: true,
+        isRegistered: !!existingRegistration,
+        test: {
+          id: test._id,
+          uuid: test.uuid,
+          title: test.title,
+          type: 'practice'
         }
-      }
-    };
-
-    // Add registration status if it exists
-    if (registrationStatus) {
-      response.registration = registrationStatus;
+      });
+    } 
+    else if (test.accessControl.type === 'public') {
+      // Public tests don't need registration
+      return res.json({
+        canAccess: true,
+        requiresRegistration: false,
+        test: {
+          id: test._id,
+          uuid: test.uuid,
+          title: test.title,
+          type: 'public'
+        }
+      });
     }
-
-    // Always return 200 status code
-    res.status(200).json(response);
+    else {
+      // Assessment tests - check if user is allowed
+      const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
+      return res.json({
+        canAccess: isAllowed,
+        requiresRegistration: false,
+        message: isAllowed ? 'You are authorized to take this test' : 'This test requires vendor approval',
+        test: {
+          id: test._id,
+          uuid: test.uuid,
+          title: test.title,
+          type: 'assessment'
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Error in checkTestRegistration:', error);
     res.status(500).json({ 
-      message: 'Error checking test registration',
-      error: error.message,
-      canRegister: false,
-      uuid: req.params.uuid
+      message: 'Error checking test access',
+      error: error.message
     });
   }
 };
@@ -2095,6 +1344,832 @@ export const getTestIdByUuid = async (req, res) => {
       message: "Internal server error",
       error: error.message,
       uuid: req.params.uuid
+    });
+  }
+};
+
+export const createTestSession = async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const { deviceInfo } = req.body;
+
+    // Find test by UUID
+    const test = await Test.findOne({ uuid });
+    if (!test) {
+      return res.status(404).json({ 
+        message: 'Test not found',
+        uuid 
+      });
+    }
+
+    // Check for existing active session
+    const existingSession = await TestSession.findOne({
+      test: test._id,
+      user: req.user._id,
+      status: { $in: ['started', 'in_progress'] }
+    });
+
+    if (existingSession) {
+      return res.json({
+        message: 'Active session exists',
+        session: {
+          _id: existingSession._id,
+          status: existingSession.status,
+          startTime: existingSession.startTime
+        }
+      });
+    }
+
+    // Create new session
+    const session = await TestSession.create({
+      test: test._id,
+      user: req.user._id,
+      status: 'started',
+      startTime: new Date(),
+      deviceInfo,
+      browserSwitches: 0,
+      tabSwitches: 0
+    });
+
+    res.status(201).json({
+      message: 'Session created successfully',
+      session: {
+        _id: session._id,
+        status: session.status,
+        startTime: session.startTime
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating test session:', error);
+    res.status(500).json({ 
+      message: 'Error creating test session',
+      error: error.message 
+    });
+  }
+};
+
+export const addAllowedUsers = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { userIds } = req.body;
+
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    // Check authorization
+    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // Initialize allowedUsers array if it doesn't exist
+    if (!test.accessControl.allowedUsers) {
+      test.accessControl.allowedUsers = [];
+    }
+
+    // Add new users to allowedUsers array (avoiding duplicates)
+    const newUserIds = userIds.filter(
+      userId => !test.accessControl.allowedUsers.includes(userId)
+    );
+    test.accessControl.allowedUsers.push(...newUserIds);
+
+    await test.save();
+
+    res.json({
+      message: "Users added successfully",
+      addedUsers: newUserIds,
+      totalAllowedUsers: test.accessControl.allowedUsers.length
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Internal server error",
+      details: error.message 
+    });
+  }
+};
+
+export const removeAllowedUsers = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { userIds } = req.body;
+
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    // Check authorization
+    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // Initialize allowedUsers array if it doesn't exist
+    if (!test.accessControl.allowedUsers) {
+      test.accessControl.allowedUsers = [];
+    }
+
+    // Remove users from allowedUsers array
+    const initialLength = test.accessControl.allowedUsers.length;
+    test.accessControl.allowedUsers = test.accessControl.allowedUsers.filter(
+      userId => !userIds.includes(userId.toString())
+    );
+
+    const removedCount = initialLength - test.accessControl.allowedUsers.length;
+
+    await test.save();
+
+    res.json({
+      message: "Users removed successfully",
+      removedCount,
+      remainingUsers: test.accessControl.allowedUsers.length,
+      removedUsers: userIds
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Internal server error",
+      details: error.message 
+    });
+  }
+};
+
+export const getPublicTests = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Build query based on filters
+    let query = {
+      'accessControl.type': 'public',
+      status: 'published'
+    };
+
+    // Add optional filters
+    if (req.query.category) {
+      query.category = req.query.category;
+    }
+    if (req.query.difficulty) {
+      query.difficulty = req.query.difficulty;
+    }
+    if (req.query.type) {
+      query.type = req.query.type;
+    }
+    if (req.query.search) {
+      query.$or = [
+        { title: { $regex: req.query.search, $options: 'i' } },
+        { description: { $regex: req.query.search, $options: 'i' } }
+      ];
+    }
+
+    // Get total count for pagination
+    const total = await Test.countDocuments(query);
+
+    // Get tests with sorting options
+    const sortField = req.query.sortBy || 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    const sortOptions = { [sortField]: sortOrder };
+
+    const tests = await Test.find(query)
+      .select('title description duration totalMarks type category difficulty vendor questionCounts createdAt updatedAt')
+      .populate('vendor', 'name email')
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limit);
+
+    // Format response
+    const formattedTests = tests.map(test => ({
+      _id: test._id,
+      title: test.title,
+      description: test.description,
+      duration: test.duration,
+      totalMarks: test.totalMarks,
+      type: test.type,
+      category: test.category,
+      difficulty: test.difficulty,
+      vendor: {
+        name: test.vendor.name,
+        email: test.vendor.email
+      },
+      questionCounts: {
+        mcq: test.mcqs?.length || 0,
+        coding: test.codingChallenges?.length || 0
+      },
+      createdAt: test.createdAt,
+      updatedAt: test.updatedAt
+    }));
+
+    res.json({
+      tests: formattedTests,
+      pagination: {
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        limit
+      },
+      filters: {
+        category: req.query.category,
+        difficulty: req.query.difficulty,
+        type: req.query.type,
+        search: req.query.search
+      },
+      sorting: {
+        field: sortField,
+        order: req.query.sortOrder || 'desc'
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching public tests:', error);
+    res.status(500).json({ 
+      message: 'Error fetching public tests', 
+      error: error.message 
+    });
+  }
+};
+
+export const getTestByUuid = async (req, res) => {
+  try {
+    console.log('UUID received:', req.params.uuid); // Debug log
+
+    const test = await Test.findOne({ uuid: req.params.uuid })
+      .select('_id uuid title description duration type category difficulty totalMarks status accessControl vendor')
+      .populate('vendor', 'name email')
+      .lean();
+    
+    if (!test) {
+      console.log('Test not found for UUID:', req.params.uuid);
+      return res.status(404).json({ 
+        message: "Test not found",
+        uuid: req.params.uuid 
+      });
+    }
+
+    res.json({
+      message: "Test found successfully",
+      data: {
+        _id: test._id,
+        uuid: test.uuid,
+        title: test.title,
+        description: test.description,
+        duration: test.duration,
+        type: test.type,
+        category: test.category,
+        difficulty: test.difficulty,
+        totalMarks: test.totalMarks,
+        status: test.status,
+        accessControl: test.accessControl?.type || 'public',
+        vendor: {
+          name: test.vendor?.name || 'Anonymous',
+          email: test.vendor?.email
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in getTestByUuid:', error);
+    res.status(500).json({ 
+      message: "Internal server error",
+      error: error.message,
+      uuid: req.params.uuid
+    });
+  }
+};
+
+export const getUserSubmissions = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const userId = req.user._id;
+
+    // Find all submissions for this user and test
+    const submissions = await Submission.find({
+      test: testId,
+      user: userId
+    })
+    .populate('test', 'title duration totalMarks passingMarks')
+    .sort({ submittedAt: -1 })
+    .lean();
+
+    if (!submissions || submissions.length === 0) {
+      return res.json({
+        message: "No submissions found",
+        submissions: []
+      });
+    }
+
+    // Transform submissions data
+    const transformedSubmissions = submissions.map(submission => ({
+      _id: submission._id,
+      test: {
+        _id: submission.test._id,
+        title: submission.test.title,
+        duration: submission.test.duration,
+        totalMarks: submission.test.totalMarks,
+        passingMarks: submission.test.passingMarks
+      },
+      score: submission.score,
+      status: submission.status,
+      submittedAt: submission.submittedAt,
+      duration: submission.duration,
+      mcqAnswers: submission.mcqAnswers?.length || 0,
+      codingAnswers: submission.codingAnswers?.length || 0,
+      feedback: submission.feedback || null,
+      attempts: submission.attempts || 1
+    }));
+
+    res.json({
+      message: "Submissions retrieved successfully",
+      count: submissions.length,
+      submissions: transformedSubmissions
+    });
+
+  } catch (error) {
+    console.error('Error in getUserSubmissions:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid test ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Failed to retrieve submissions",
+      details: error.message 
+    });
+  }
+};
+
+export const updateCodingChallenges = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const challenges = Array.isArray(req.body) ? req.body : [req.body];
+
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    // Check authorization
+    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    const updatedChallenges = [];
+    const errors = [];
+
+    // Update each challenge
+    for (const challengeUpdate of challenges) {
+      const { challengeId, ...updateData } = challengeUpdate;
+      
+      const challengeIndex = test.codingChallenges.findIndex(
+        challenge => challenge._id.toString() === challengeId
+      );
+
+      if (challengeIndex === -1) {
+        errors.push(`Challenge not found: ${challengeId}`);
+        continue;
+      }
+
+      // Validate language implementations if provided
+      if (updateData.languageImplementations) {
+        for (const [lang, impl] of Object.entries(updateData.languageImplementations)) {
+          if (!impl.visibleCode || !impl.invisibleCode) {
+            errors.push(`Both visibleCode and invisibleCode are required for language: ${lang}`);
+            continue;
+          }
+        }
+      }
+
+      // Update the challenge
+      const updatedChallenge = {
+        ...test.codingChallenges[challengeIndex].toObject(),
+        ...updateData
+      };
+
+      test.codingChallenges[challengeIndex] = updatedChallenge;
+      updatedChallenges.push(updatedChallenge);
+    }
+
+    // Recalculate total marks if any marks were updated
+    if (updatedChallenges.some(c => c.marks)) {
+      test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0) + 
+                       (test.codingChallenges?.reduce((sum, challenge) => sum + challenge.marks, 0) || 0);
+      test.passingMarks = Math.ceil(test.totalMarks * 0.4);
+    }
+
+    await test.save();
+
+    res.json({
+      message: "Coding challenges updated successfully",
+      updatedCount: updatedChallenges.length,
+      errors: errors.length > 0 ? errors : undefined,
+      updatedChallenges: updatedChallenges.map(c => ({
+        id: c._id,
+        title: c.title,
+        marks: c.marks
+      }))
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Failed to update coding challenges",
+      details: error.message 
+    });
+  }
+};
+
+export const updateSessionStatus = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { status, proctorNote, browserSwitches, tabSwitches } = req.body;
+
+    const session = await TestSession.findById(sessionId);
+    
+    if (!session) {
+      return res.status(404).json({ error: "Test session not found" });
+    }
+
+    // Verify the session belongs to the current user
+    if (session.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
+      return res.status(403).json({ error: "Not authorized to update this session" });
+    }
+
+    // Update session fields
+    if (status) {
+      session.status = status;
+    }
+
+    if (typeof browserSwitches === 'number') {
+      session.browserSwitches = browserSwitches;
+    }
+
+    if (typeof tabSwitches === 'number') {
+      session.tabSwitches = tabSwitches;
+    }
+
+    // Add proctor note if provided
+    if (proctorNote) {
+      session.proctorNotes.push({
+        note: proctorNote,
+        timestamp: new Date(),
+        addedBy: req.user._id
+      });
+    }
+
+    // If status is 'completed', set end time
+    if (status === 'completed' && !session.endTime) {
+      session.endTime = new Date();
+    }
+
+    await session.save();
+
+    res.json({
+      message: "Session status updated successfully",
+      session: {
+        _id: session._id,
+        status: session.status,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        browserSwitches: session.browserSwitches,
+        tabSwitches: session.tabSwitches,
+        lastUpdated: new Date(),
+        proctorNotes: session.proctorNotes
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in updateSessionStatus:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid session ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Failed to update session status",
+      details: error.message 
+    });
+  }
+};
+
+export const updateTestAccess = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { accessControl } = req.body;
+
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    // Check authorization
+    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Not authorized to update test access" });
+    }
+
+    // Validate access control type
+    if (!accessControl || !['public', 'private', 'restricted', 'invitation'].includes(accessControl.type)) {
+      return res.status(400).json({
+        error: "Invalid access control type. Must be 'public', 'private', 'restricted', or 'invitation'",
+        receivedType: accessControl?.type
+      });
+    }
+
+    // Update access control settings
+    test.accessControl = {
+      type: accessControl.type,
+      // Copy any additional access control settings
+      ...(accessControl.password && { password: accessControl.password }),
+      ...(accessControl.validUntil && { validUntil: new Date(accessControl.validUntil) }),
+      ...(accessControl.maxAttempts && { maxAttempts: accessControl.maxAttempts }),
+      ...(accessControl.allowedUsers && { allowedUsers: accessControl.allowedUsers }),
+      ...(accessControl.allowedDomains && { allowedDomains: accessControl.allowedDomains }),
+      updatedAt: new Date()
+    };
+
+    await test.save();
+
+    // Return sanitized response (exclude sensitive data)
+    res.json({
+      message: "Test access updated successfully",
+      test: {
+        _id: test._id,
+        title: test.title,
+        accessControl: {
+          type: test.accessControl.type,
+          ...(test.accessControl.validUntil && { validUntil: test.accessControl.validUntil }),
+          ...(test.accessControl.maxAttempts && { maxAttempts: test.accessControl.maxAttempts }),
+          ...(test.accessControl.allowedDomains && { allowedDomains: test.accessControl.allowedDomains }),
+          updatedAt: test.accessControl.updatedAt
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in updateTestAccess:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid test ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Failed to update test access",
+      details: error.message 
+    });
+  }
+};
+
+export const updateTestVisibility = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { visibility, status } = req.body;
+
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    // Check authorization
+    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Not authorized to update test visibility" });
+    }
+
+    // Validate visibility
+    if (visibility && !['public', 'private', 'unlisted'].includes(visibility)) {
+      return res.status(400).json({
+        error: "Invalid visibility type. Must be 'public', 'private', or 'unlisted'",
+        receivedVisibility: visibility
+      });
+    }
+
+    // Validate status
+    if (status && !['draft', 'published', 'archived'].includes(status)) {
+      return res.status(400).json({
+        error: "Invalid status. Must be 'draft', 'published', or 'archived'",
+        receivedStatus: status
+      });
+    }
+
+    // Update test visibility and status
+    const updates = {
+      ...(visibility && { 'accessControl.type': visibility }),
+      ...(status && { status }),
+      updatedAt: new Date()
+    };
+
+    const updatedTest = await Test.findByIdAndUpdate(
+      testId,
+      { $set: updates },
+      { 
+        new: true,
+        select: 'title status accessControl updatedAt' 
+      }
+    );
+
+    // Add visibility change to test history if needed
+    if (visibility && visibility !== test.accessControl.type) {
+      await Test.findByIdAndUpdate(testId, {
+        $push: {
+          history: {
+            action: 'visibility_changed',
+            from: test.accessControl.type,
+            to: visibility,
+            changedBy: req.user._id,
+            timestamp: new Date()
+          }
+        }
+      });
+    }
+
+    res.json({
+      message: "Test visibility updated successfully",
+      test: {
+        _id: updatedTest._id,
+        title: updatedTest.title,
+        status: updatedTest.status,
+        visibility: updatedTest.accessControl.type,
+        updatedAt: updatedTest.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in updateTestVisibility:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid test ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Failed to update test visibility",
+      details: error.message 
+    });
+  }
+};
+
+export const getFeaturedPublicTests = async (req, res) => {
+  try {
+    const tests = await Test.find({
+      'accessControl.type': 'public',
+      status: 'published',
+      featured: true
+    })
+    .select('title description duration totalMarks type category difficulty vendor')
+    .populate('vendor', 'name email')
+    .limit(5)
+    .sort({ createdAt: -1 });
+
+    res.json({
+      message: 'Featured tests retrieved successfully',
+      tests: tests.map(test => ({
+        _id: test._id,
+        title: test.title,
+        description: test.description,
+        duration: test.duration,
+        totalMarks: test.totalMarks,
+        type: test.type,
+        category: test.category,
+        difficulty: test.difficulty,
+        vendor: {
+          name: test.vendor.name,
+          email: test.vendor.email
+        }
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'Error fetching featured tests',
+      error: error.message 
+    });
+  }
+};
+
+export const getPublicTestCategories = async (req, res) => {
+  try {
+    const categories = await Test.distinct('category', {
+      'accessControl.type': 'public',
+      status: 'published'
+    });
+
+    res.json({
+      message: 'Categories retrieved successfully',
+      categories
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'Error fetching categories',
+      error: error.message 
+    });
+  }
+};
+
+export const registerForTest = async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    
+    // Find test by UUID
+    const test = await Test.findOne({ uuid });
+    if (!test) {
+      return res.status(404).json({ message: 'Test not found' });
+    }
+
+    // Get or create session
+    let session = await TestSession.findOne({
+      test: test._id,
+      user: req.user._id,
+      status: { $in: ['started', 'in_progress'] }
+    });
+
+    if (!session) {
+      session = await TestSession.create({
+        test: test._id,
+        user: req.user._id,
+        status: 'started',
+        startTime: new Date(),
+        deviceInfo: {
+          userAgent: req.headers['user-agent'],
+          ip: req.ip
+        }
+      });
+    }
+
+    // Check existing registration
+    const existingRegistration = await TestRegistration.findOne({
+      test: test._id,
+      user: req.user._id
+    });
+
+    if (existingRegistration) {
+      return res.status(200).json({
+        message: 'Already registered for this test',
+        registration: {
+          _id: existingRegistration._id,
+          test: existingRegistration.test,
+          user: existingRegistration.user,
+          status: existingRegistration.status,
+          testType: existingRegistration.testType,
+          registrationType: existingRegistration.registrationType,
+          isVendorAttempt: existingRegistration.isVendorAttempt,
+          registeredAt: existingRegistration.registeredAt,
+          createdAt: existingRegistration.createdAt,
+          updatedAt: existingRegistration.updatedAt,
+          __v: existingRegistration.__v,
+          sessionId: session._id // Moved inside registration object for consistency
+        }
+      });
+    }
+
+    // Create new registration
+    const registration = await TestRegistration.create({
+      test: test._id,
+      user: req.user._id,
+      status: 'registered',
+      testType: test.accessControl.type,
+      registrationType: test.type,
+      isVendorAttempt: req.user.role === 'vendor',
+      registeredAt: new Date()
+    });
+
+    return res.status(201).json({
+      message: 'Successfully registered for test',
+      registration: {
+        _id: registration._id,
+        test: registration.test,
+        user: registration.user,
+        status: registration.status,
+        testType: registration.testType,
+        registrationType: registration.registrationType,
+        isVendorAttempt: registration.isVendorAttempt,
+        registeredAt: registration.registeredAt,
+        createdAt: registration.createdAt,
+        updatedAt: registration.updatedAt,
+        __v: registration.__v,
+        sessionId: session._id // Moved inside registration object for consistency
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in registerForTest:', error);
+    res.status(500).json({ 
+      message: 'Error registering for test',
+      error: error.message
     });
   }
 };

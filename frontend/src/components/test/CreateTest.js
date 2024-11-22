@@ -18,7 +18,7 @@ import {
 import Layout from '../layout/Layout';
 import { useNavigate } from 'react-router-dom';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { createTest } from '../../services/test/testApi';
+import apiService from '../../services/api';
 
 const CreateTest = () => {
   const navigate = useNavigate();
@@ -136,7 +136,8 @@ const CreateTest = () => {
           marks: Number(challenge.marks),
           timeLimit: Number(challenge.timeLimit),
           memoryLimit: Number(challenge.memoryLimit),
-          language: challenge.allowedLanguages[0] || 'javascript', // Set default language
+          problemStatement: challenge.description,
+          language: challenge.allowedLanguages[0] || 'javascript',
           testCases: challenge.testCases?.map(testCase => ({
             ...testCase,
             hidden: testCase.hidden || false
@@ -186,7 +187,7 @@ const CreateTest = () => {
       });
 
       console.log('Sending request to server with prepared data:', preparedData);
-      const response = await createTest(preparedData);
+      const response = await apiService.post('/tests', preparedData);
       console.log('Server response:', response);
       setSuccess('Test created successfully!');
       navigate(`/tests/${response._id}`);

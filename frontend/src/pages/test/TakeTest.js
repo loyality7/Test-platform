@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getMethod, postMethod } from '../../helpers';
+import apiService from '../../services/api';
 import MCQSection from './components/MCQSection';
 import CodingSection from './components/CodingSection';
 import Proctoring from './Proctoring';
@@ -9,6 +9,7 @@ import { Clock, FileText, Check } from 'lucide-react';
 
 export default function TakeTest() {
   const [test, setTest] = useState(null);
+  const [sessionId, setSessionId] = useState(new URLSearchParams(window.location.search).get('session'));
   const [currentSection, setCurrentSection] = useState('mcq');
   const [answers, setAnswers] = useState({
     mcq: {},
@@ -19,7 +20,6 @@ export default function TakeTest() {
   const { uuid } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const sessionId = new URLSearchParams(location.search).get('session');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [warnings, setWarnings] = useState(0);
   const [showWarningModal, setShowWarningModal] = useState(false);
@@ -105,52 +105,107 @@ export default function TakeTest() {
   useEffect(() => {
     const loadTest = async () => {
       try {
-        if (!uuid || !sessionId) {
-          setError('Invalid test or session ID');
+        if (!uuid) {
+          console.log('Missing uuid:', uuid);
+          setError('Invalid test ID');
           return;
         }
 
-        const token = localStorage.getItem('token');
-        if (!token) {
-          localStorage.setItem('redirectAfterLogin', window.location.pathname);
-          navigate('/login');
-          return;
-        }
+        // First, check if we need to register for the test
+        if (!sessionId || sessionId === 'undefined') {
+          console.log('No valid session ID found, attempting to register for test');
+          try {
+            // First, verify the test to get testId if we have UUID
+            let testId = null;
+            if (uuid) {
+              console.log('Verifying test with UUID:', uuid);
+              const verifyResponse = await apiService.post(`tests/verify/${uuid}`);
+              console.log('Verify response:', verifyResponse);
+              
+              if (verifyResponse?.test?.id) {
+                testId = verifyResponse.test.id;
+                console.log('Got testId from UUID verification:', testId);
+              }
+            }
 
-        const response = await getMethod(`tests/${uuid}/take`, {
-          params: { session: sessionId },
-          headers: {
-            'Authorization': `Bearer ${token}`
+            // Now register using testId if available, fallback to UUID
+            const registrationEndpoint = testId 
+              ? `tests/${testId}/register`
+              : `tests/register/${uuid}`;
+            
+            console.log('Using registration endpoint:', registrationEndpoint);
+            
+            const registrationResponse = await apiService.post(registrationEndpoint);
+            console.log('Registration response:', registrationResponse);
+
+            // Handle the session from the response
+            if (registrationResponse?.session?.id) {
+              const sessionId = registrationResponse.session.id;
+              console.log('Found session ID:', sessionId);
+              
+              // Update URL with session ID
+              const newUrl = `${window.location.pathname}?session=${sessionId}`;
+              window.history.replaceState({}, '', newUrl);
+              setSessionId(sessionId);
+              return;
+            }
+            
+            // If we get here, we don't have a valid session ID
+            console.error('No valid session ID in response:', registrationResponse);
+            throw new Error('No valid session ID found in response');
+          } catch (error) {
+            console.error('Registration error:', error);
+            setError(error.response?.data?.message || error.message || 'Failed to register for test');
+            return;
           }
-        });
-
-        if (response?.data?.data) {
-          const testData = response.data.data;
-          setTest({
-            title: testData.title,
-            description: testData.description,
-            duration: testData.duration,
-            totalMarks: testData.totalMarks,
-            mcqs: testData.mcqs.map(mcq => ({
-              ...mcq,
-              id: mcq._id
-            })),
-            codingChallenges: testData.codingChallenges.map(challenge => ({
-              ...challenge,
-              id: challenge._id
-            }))
-          });
-          setLoading(false);
-        } else {
-          setError('Invalid test data received');
         }
+
+        // Only proceed with test loading if we have a valid session ID
+        if (sessionId && sessionId !== 'undefined') {
+          console.log('Loading test with valid session:', { uuid, sessionId });
+          try {
+            const response = await apiService.get(`/tests/${uuid}/take`, {
+              params: { session: sessionId }
+            });
+            
+            console.log('Test data response:', response);
+            
+            if (!response?.data) {
+              throw new Error('Invalid response structure');
+            }
+
+            const testData = response.data;
+            setTest({
+              title: testData.title,
+              description: testData.description,
+              duration: testData.duration,
+              totalMarks: testData.totalMarks,
+              mcqs: testData.mcqs.map(mcq => ({
+                ...mcq,
+                id: mcq._id
+              })),
+              codingChallenges: testData.codingChallenges.map(challenge => ({
+                ...challenge,
+                id: challenge._id
+              }))
+            });
+            setLoading(false);
+          } catch (error) {
+            console.error('Error loading test data:', error);
+            setError(error.message || 'Error loading test');
+            setLoading(false);
+          }
+        } else {
+          throw new Error('No valid session ID available');
+        }
+
       } catch (error) {
-        console.error('Error loading test:', error);
+        console.error('Error in loadTest:', error);
         if (error.response?.status === 401) {
           localStorage.setItem('redirectAfterLogin', window.location.pathname);
           navigate('/login');
         } else {
-          setError(error.response?.data?.message || 'Error loading test');
+          setError(error.message || 'Error loading test');
         }
       } finally {
         setLoading(false);
@@ -188,16 +243,46 @@ export default function TakeTest() {
     requestPermissions();
   }, []);
 
-  // Start Test in Fullscreen
+  // Fullscreen handler
   const handleStartTest = async () => {
     try {
-      await document.documentElement.requestFullscreen();
+      // Request fullscreen on user click
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        await elem.webkitRequestFullscreen();
+      } else if (elem.mozRequestFullScreen) {
+        await elem.mozRequestFullScreen();
+      } else if (elem.msRequestFullscreen) {
+        await elem.msRequestFullscreen();
+      }
+      
       setIsFullScreen(true);
       setShowInstructions(false);
     } catch (error) {
+      console.error('Fullscreen error:', error);
+      alert('Please enable fullscreen to continue the test. If the issue persists, check your browser settings.');
       handleWarning('Please enable full screen to continue the test');
     }
   };
+
+  // Add fullscreen change listener
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullScreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement) {
+        // Handle fullscreen exit
+        console.warn('Fullscreen mode exited');
+        // Optionally show warning or take action
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Handle Warnings from Proctoring with cooldown
   const handleWarning = (message) => {
@@ -227,30 +312,32 @@ export default function TakeTest() {
   // Handle Test Submission
   const handleSubmit = async () => {
     try {
-      if (!sessionId) {
-        setError('No active test session');
-        return;
-      }
+      // Calculate total score from MCQ and coding submissions
+      const totalScore = (test.mcqSubmission?.totalScore || 0) + 
+                        (test.codingSubmission?.totalScore || 0);
 
-      await postMethod(`tests/sessions/${sessionId}/submit`, { answers });
+      // Navigate to completion page
       navigate('/test/completed', { 
         state: { 
           testId: uuid,
-          sessionId: sessionId 
+          submission: {
+            mcq: answers.mcq,
+            coding: answers.coding,
+            totalScore: totalScore
+          }
         }
       });
     } catch (error) {
-      setError(error.message || 'Error submitting test');
+      setError(error.message || 'Error completing test');
     }
   };
 
   const handleMCQSubmission = async (submission) => {
     try {
-      // Update test status
       setTest(prev => ({
         ...prev,
         status: 'mcq_completed',
-        mcqSubmission: submission.mcqSubmission
+        mcqSubmission: submission
       }));
 
       // Switch to coding section
@@ -262,20 +349,22 @@ export default function TakeTest() {
 
   const handleCodingSubmission = async (submission) => {
     try {
-      // Update test status
       setTest(prev => ({
         ...prev,
         status: 'completed',
-        codingSubmission: submission.codingSubmission,
+        codingSubmission: submission,
         totalScore: submission.totalScore
       }));
 
-      // Navigate to completion page
+      // Navigate to completion page without session
       navigate('/test/completed', { 
         state: { 
           testId: uuid,
-          sessionId: sessionId,
-          submission: submission
+          submission: {
+            mcq: answers.mcq,
+            coding: answers.coding,
+            totalScore: submission.totalScore
+          }
         }
       });
     } catch (error) {
@@ -286,6 +375,14 @@ export default function TakeTest() {
   // Add this helper function at the top of your component
   const isAllMCQsAnswered = (mcqAnswers, totalMCQs) => {
     return Object.keys(mcqAnswers).length === totalMCQs;
+  };
+
+  // When setting answers, ensure the structure is maintained
+  const handleAnswerUpdate = (section, newAnswers) => {
+    setAnswers(prev => ({
+      ...prev,
+      [section]: newAnswers || {}
+    }));
   };
 
   // Render Loading State
@@ -475,9 +572,7 @@ export default function TakeTest() {
             <MCQSection
               mcqs={test.mcqs}
               answers={answers.mcq}
-              setAnswers={(mcqAnswers) =>
-                setAnswers((prev) => ({ ...prev, mcq: mcqAnswers }))
-              }
+              setAnswers={(mcqAnswers) => handleAnswerUpdate('mcq', mcqAnswers)}
               onSubmitMCQs={handleMCQSubmission}
               isAllAnswered={isAllMCQsAnswered(answers.mcq, test.mcqs?.length)}
             />
@@ -485,62 +580,17 @@ export default function TakeTest() {
             <CodingSection
               challenges={test.codingChallenges}
               answers={answers.coding}
-              setAnswers={(codingAnswers) =>
-                setAnswers((prev) => ({ ...prev, coding: codingAnswers }))
-              }
+              setAnswers={(codingAnswers) => handleAnswerUpdate('coding', codingAnswers)}
               onSubmitCoding={handleCodingSubmission}
             />
           )}
         </div>
       </div>
 
-      {/* Footer */}
+      {/* Footer - Removed progress tracking */}
       <div className="sticky bottom-0 bg-white border-t border-gray-200 shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-600">
-                {currentSection === 'mcq' ? 'MCQs Progress:' : 'Coding Progress:'}
-                <span className="ml-2 font-medium">
-                  {Object.keys(currentSection === 'mcq' ? answers.mcq : answers.coding).length} of{' '}
-                  {currentSection === 'mcq' ? test.mcqs?.length : test.codingChallenges?.length}
-                </span>
-              </div>
-              <div className="w-48 bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all"
-                  style={{
-                    width: `${(Object.keys(currentSection === 'mcq' ? answers.mcq : answers.coding).length /
-                      (currentSection === 'mcq' ? test.mcqs?.length : test.codingChallenges?.length)) * 100}%`
-                  }}
-                />
-              </div>
-            </div>
-            {currentSection === 'mcq' && (
-              <button
-                onClick={handleMCQSubmission}
-                disabled={!isAllMCQsAnswered(answers.mcq, test.mcqs?.length)}
-                className={`px-6 py-2 rounded-lg flex items-center space-x-2 transition-all
-                  ${isAllMCQsAnswered(answers.mcq, test.mcqs?.length)
-                    ? 'bg-green-600 text-white hover:bg-green-700'
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  }`}
-              >
-                <span>Submit MCQs</span>
-                <Check className="w-5 h-5" />
-              </button>
-            )}
-            {currentSection === 'coding' && (
-              <button
-                onClick={handleSubmit}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 
-                         transition-all flex items-center space-x-2"
-              >
-                <span>Submit Test</span>
-                <Check className="w-5 h-5" />
-              </button>
-            )}
-          </div>
+          {/* Empty footer - can be removed if not needed */}
         </div>
       </div>
 

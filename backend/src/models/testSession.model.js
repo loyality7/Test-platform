@@ -13,54 +13,27 @@ const testSessionSchema = new mongoose.Schema({
   },
   startTime: {
     type: Date,
-    default: Date.now
+    required: true
   },
   endTime: Date,
+  duration: {
+    type: Number,
+    required: true
+  },
   status: {
     type: String,
-    enum: ['started', 'in_progress', 'completed', 'terminated'],
-    default: 'started'
+    enum: ['active', 'completed', 'abandoned'],
+    default: 'active'
   },
-  browserSwitches: {
-    type: Number,
-    default: 0
-  },
-  tabSwitches: {
-    type: Number,
-    default: 0
-  },
-  proctorNotes: [{
-    note: String,
-    timestamp: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  ipAddress: String,
-  userAgent: String,
-  currentQuestion: {
-    type: Number,
-    default: 0
-  },
-  answers: [{
-    questionId: {
-      type: mongoose.Schema.Types.ObjectId,
-      required: true
-    },
-    answerData: mongoose.Schema.Types.Mixed,
-    timeSpent: {
-      type: Number,
-      default: 0
-    }
-  }],
-  isVendorAttempt: {
-    type: Boolean,
-    default: false
+  deviceInfo: {
+    userAgent: String,
+    platform: String,
+    screenResolution: String,
+    language: String,
+    ip: String
   }
 }, {
   timestamps: true
 });
 
-const TestSession = mongoose.model('TestSession', testSessionSchema);
-
-export default TestSession; 
+export default mongoose.model('TestSession', testSessionSchema); 
