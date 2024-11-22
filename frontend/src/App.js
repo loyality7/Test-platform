@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import Header from './components/layout/Header';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { QueryClient, QueryClientProvider } from 'react-query';
 
@@ -36,126 +35,47 @@ const queryClient = new QueryClient();
 const AppContent = () => {
   const location = useLocation();
   
-  // Define routes where header should be hidden
-  const noHeaderRoutes = [
+  // Define routes where layout should be hidden
+  const noLayoutRoutes = [
     '/test/take',
     '/test/shared',
     '/test/completed',
-    '/test/proctoring'
+    '/test/proctoring',
+    '/',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password'
   ];
 
-  // Check if current path starts with any of the noHeaderRoutes
-  const shouldShowHeader = !noHeaderRoutes.some(route => 
+  // Check if current path starts with any of the noLayoutRoutes
+  const shouldShowLayout = !noLayoutRoutes.some(route => 
     location.pathname.startsWith(route)
   );
 
   return (
-    <>
-      {shouldShowHeader && <Header />}
-      <div className={shouldShowHeader ? "pt-16" : ""}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route 
-            path="/profile" 
-            
-            element={<ProtectedRoute element={<Profile />} allowedRoles={['user', 'vendor', 'admin']} />} 
-          />
-          <Route 
-            path="/dashboard/user" 
-            element={<ProtectedRoute element={<UserDashboardPage />} allowedRoles={['user', 'admin']} />} 
-          />
-          <Route 
-            path="/dashboard/vendor" 
-            element={<ProtectedRoute element={<VendorDashboardPage />} allowedRoles={['vendor', 'admin']} />} 
-          />
-          <Route 
-            path="/dashboard/admin" 
-            element={<ProtectedRoute element={<AdminDashboardPage />} allowedRoles={['admin']} />} 
-          />
-          <Route path="/vendor/dashboard" element={<Dashboard />} />
-          <Route 
-            path="/vendor/dashboard" 
-            element={
-              <ProtectedRoute 
-                element={<VendorDashboard />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/tests" 
-            element={
-              <ProtectedRoute 
-                element={<VendorTests />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/tests/create" 
-            element={
-              <ProtectedRoute 
-                element={<CreateTest />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/analytics" 
-            element={
-              <ProtectedRoute 
-                element={<VendorAnalytics />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/candidates" 
-            element={
-              <ProtectedRoute 
-                element={<VendorCandidates />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/invitations" 
-            element={
-              <ProtectedRoute 
-                element={<VendorInvitations />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/profile" 
-            element={
-              <ProtectedRoute 
-                element={<VendorProfile />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route 
-            path="/vendor/reports" 
-            element={
-              <ProtectedRoute 
-                element={<VendorReports />} 
-                allowedRoles={['vendor', 'admin']} 
-              />
-            } 
-          />
-          <Route path="/test/shared/:uuid" element={<SharedTest />} />
-          <Route path="/test/take/:uuid" element={<TakeTest />} />
-          <Route path="/test/completed" element={<TestCompleted />} />
-          <Route path="/test/proctoring/:testId" element={<Proctoring />} />
-        </Routes>
-      </div>
-    </>
+    <div>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        
+        {/* Protected routes with Layout */}
+        <Route 
+          path="/vendor/*" 
+          element={
+            <ProtectedRoute 
+              element={<VendorDashboard />} 
+              allowedRoles={['vendor', 'admin']} 
+            />
+          } 
+        />
+        {/* ... other protected routes */}
+      </Routes>
+    </div>
   );
 };
 

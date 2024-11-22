@@ -1,55 +1,27 @@
 import React from 'react';
-import PropTypes from 'prop-types';
 
-const Card = ({
-  children,
-  className = '',
-  elevation = 'md',
-  hover = false,
-  padding = 'md',
-  border = false,
-}) => {
-  // Define elevation styles
-  const elevationStyles = {
-    sm: 'shadow-sm',
-    md: 'shadow-md',
-    lg: 'shadow-lg',
-    xl: 'shadow-xl',
-    none: ''
-  };
+export const Card = ({ children, className = '' }) => (
+  <div className={`bg-white rounded-lg shadow ${className}`}>
+    {children}
+  </div>
+);
 
-  // Define padding styles
-  const paddingStyles = {
-    sm: 'p-3',
-    md: 'p-6',
-    lg: 'p-8',
-    none: ''
-  };
+export const CardHeader = ({ children, className = '' }) => (
+  <div className={`p-4 ${className}`}>
+    {children}
+  </div>
+);
 
-  return (
-    <div
-      className={`
-        bg-white 
-        rounded-lg 
-        ${elevationStyles[elevation]}
-        ${paddingStyles[padding]}
-        ${hover ? 'transition-shadow duration-300 hover:shadow-lg' : ''}
-        ${border ? 'border border-gray-200' : ''}
-        ${className}
-      `}
-    >
-      {children}
-    </div>
-  );
-};
+export const CardTitle = ({ children, className = '' }) => (
+  <h3 className={`text-lg font-semibold ${className}`}>
+    {children}
+  </h3>
+);
 
-Card.propTypes = {
-  children: PropTypes.node.isRequired,
-  className: PropTypes.string,
-  elevation: PropTypes.oneOf(['none', 'sm', 'md', 'lg', 'xl']),
-  hover: PropTypes.bool,
-  padding: PropTypes.oneOf(['none', 'sm', 'md', 'lg']),
-  border: PropTypes.bool,
-};
+export const CardContent = ({ children, className = '' }) => (
+  <div className={`p-4 pt-0 ${className}`}>
+    {children}
+  </div>
+);
 
 export default Card;
