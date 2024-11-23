@@ -9,5 +9,4 @@ backend/build
 
 .env
 .env.local
-package-lock.json
 
