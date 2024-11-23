@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, } from 'react-router-dom';
 import apiService from '../../services/api';
 import MCQSection from './components/MCQSection';
 import CodingSection from './components/CodingSection';
 import Proctoring from './Proctoring';
 import WarningModal from './components/WarningModal';
-import { Clock, FileText, Check } from 'lucide-react';
+import { Clock, FileText } from 'lucide-react';
 
 export default function TakeTest() {
-  const _location = useLocation();
   const [test, setTest] = useState(null);
   const [sessionId, setSessionId] = useState(new URLSearchParams(window.location.search).get('session'));
   const [currentSection, setCurrentSection] = useState('mcq');
@@ -99,7 +98,7 @@ export default function TakeTest() {
       document.removeEventListener('paste', handlePaste);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
-  }, [showInstructions]);
+  }, [showInstructions, handleWarning, setIsTabVisible, setIsWindowFocused]);
 
   // Load Test Data
   useEffect(() => {
@@ -272,19 +271,18 @@ export default function TakeTest() {
   // Add fullscreen change listener
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullScreen(!!document.fullscreenElement);
-      if (!document.fullscreenElement) {
-        // Handle fullscreen exit
-        console.warn('Fullscreen mode exited');
-        // Optionally show warning or take action
+      if (!document.fullscreenElement && !showInstructions) {
+        handleWarning('Exiting fullscreen mode is not allowed');
+        document.documentElement.requestFullscreen().catch(() => {
+          handleWarning('Please enable fullscreen to continue the test');
+        });
       }
+      setIsFullScreen(!!document.fullscreenElement);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
-  }, []);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [showInstructions, handleWarning, setIsFullScreen]);
 
   // Handle Warnings from Proctoring with cooldown
   const handleWarning = (message) => {

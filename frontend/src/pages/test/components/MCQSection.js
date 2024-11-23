@@ -62,7 +62,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleSubmitMCQs = async () => {
+  const handleSubmitMCQs = useCallback(async () => {
     try {
       setError(null);
       setIsSubmitting(true);
@@ -197,7 +197,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [testId, answers, navigate]);
 
   const confirmSubmission = () => {
     const unansweredCount = mcqs.length - Object.keys(answers).length;
