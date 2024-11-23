@@ -18,6 +18,10 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const [executionResults, setExecutionResults] = useState({});
   const [submissionStatus, setSubmissionStatus] = useState({});
   const [isLoadingTestId, setIsLoadingTestId] = useState(false);
+  const [fontSize, setFontSize] = useState(14);
+  const [showLineNumbers, setShowLineNumbers] = useState(true);
+  const [wordWrap, setWordWrap] = useState(true);
+  const [autoComplete, setAutoComplete] = useState(true);
 
   // Add layout state and constants
   const [layout, setLayout] = useState({
@@ -598,6 +602,48 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         >
           <RotateCcw className="w-4 h-4" />
         </button>
+
+        {/* Add editor settings controls */}
+        <div className="flex items-center gap-2 ml-4 border-l border-[#3c3c3c] pl-4">
+          <button
+            onClick={() => setFontSize(prev => Math.min(prev + 2, 24))}
+            className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 text-sm"
+            title="Increase Font Size"
+          >
+            A+
+          </button>
+          <button
+            onClick={() => setFontSize(prev => Math.max(prev - 2, 10))}
+            className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 text-sm"
+            title="Decrease Font Size"
+          >
+            A-
+          </button>
+          
+          <button
+            onClick={() => setShowLineNumbers(prev => !prev)}
+            className={`p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 ${!showLineNumbers && 'opacity-50'}`}
+            title="Toggle Line Numbers"
+          >
+            #
+          </button>
+          
+          <button
+            onClick={() => setWordWrap(prev => !prev)}
+            className={`p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 ${!wordWrap && 'opacity-50'}`}
+            title="Toggle Word Wrap"
+          >
+            ↵
+          </button>
+          
+          <button
+            onClick={() => setAutoComplete(prev => !prev)}
+            className={`p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 ${!autoComplete && 'opacity-50'}`}
+            title="Toggle Auto Complete"
+          >
+            <>⌨</>
+          </button>
+        </div>
       </div>
     );
   };
