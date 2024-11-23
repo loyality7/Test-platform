@@ -13,12 +13,8 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const [testResults, setTestResults] = useState({});
   const [isRunning, setIsRunning] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [fontSize] = useState(14);
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [theme, setTheme] = useState('vs-dark');
-  const [showLineNumbers] = useState(true);
-  const [wordWrap] = useState(true);
-  const [autoComplete] = useState(true);
   const [executionResults, setExecutionResults] = useState({});
   const [submissionStatus, setSubmissionStatus] = useState({});
   const [isLoadingTestId, setIsLoadingTestId] = useState(false);

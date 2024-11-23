@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 
 export default function TestCompleted() {
   const location = useLocation();
-  const { testId, sessionId } = location.state || {};
+  const { sessionId } = location.state || {};
 
   return (
     <div className="max-w-4xl mx-auto p-6">

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Timer, CheckCircle2, Circle, Clock, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Timer, CheckCircle2, Circle, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiService } from '../../../services/api';
 import { toast } from 'react-hot-toast';
 
@@ -29,7 +29,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
         answersCount: Object.keys(answers).length
       });
     }
-  }, [mcqs, testId]);
+  }, [mcqs, testId, answers]);
 
   useEffect(() => {
     const parseTestUUID = async () => {
@@ -64,6 +64,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
 
   const handleSubmitMCQs = async () => {
     try {
+      setError(null);
       setIsSubmitting(true);
       
       const currentTestId = testId || localStorage.getItem('currentTestId');
@@ -141,6 +142,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
         throw new Error('Invalid server response');
       }
     } catch (error) {
+      setError(error.message || 'An error occurred during submission');
       console.error('MCQ Submission Error:', error);
       
       if (error?.response?.data?.registrationStatus === 'completed' || 
@@ -240,7 +242,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (currentMcq < mcqs.length - 1) {
       setCurrentMcq(prev => prev + 1);
       console.log('Moving to next question:', currentMcq + 1);
@@ -250,7 +252,7 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
         handleSubmitMCQs();
       }
     }
-  };
+  }, [currentMcq, mcqs.length, handleSubmitMCQs]);
 
   const isAllQuestionsAnswered = (answers, mcqs) => {
     const result = Object.keys(answers).length === mcqs.length;
@@ -311,14 +313,25 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
     }
   }, []);
 
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.key === 'ArrowRight') {
+        handleNext();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [handleNext]);
+
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto px-2 py-2">
       {/* Status Bar - More Compact */}
       <div className="bg-white shadow-sm rounded-lg mb-2">
-        <div className="grid grid-cols-3 gap-2 p-2">
+        <div className="grid grid-cols-4 gap-2 p-2">
           {/* Time Left Card */}
           <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
-            <Clock className="w-4 h-4 text-blue-600" />
+            <Timer className="w-4 h-4 text-blue-600" />
             <div>
               <p className="text-xs text-blue-600 font-medium">Time Left</p>
               <p className="text-sm font-bold">{formatTime(timeLeft)}</p>
@@ -407,17 +420,11 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
                 `}
               >
                 <div className="flex items-center gap-2">
-                  <div className={`
-                    w-4 h-4 rounded-full border-2 flex items-center justify-center
-                    ${answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index
-                      ? 'border-blue-500 bg-blue-500'
-                      : 'border-gray-300'
-                    }
-                  `}>
-                    {answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                    )}
-                  </div>
+                  {answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index ? (
+                    <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                  ) : (
+                    <Circle className="w-4 h-4 text-gray-400" />
+                  )}
                   <span className="text-gray-700">{option}</span>
                 </div>
               </div>
@@ -481,6 +488,19 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs }) {
           </div>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg mb-4">
+          {error}
+        </div>
+      )}
+
+      {isLoadingTestId && (
+        <div className="flex items-center justify-center p-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-gray-600">Loading test...</span>
+        </div>
+      )}
     </div>
   );
 } 

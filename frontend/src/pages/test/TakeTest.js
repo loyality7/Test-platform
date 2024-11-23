@@ -8,6 +8,7 @@ import WarningModal from './components/WarningModal';
 import { Clock, FileText, Check } from 'lucide-react';
 
 export default function TakeTest() {
+  const _location = useLocation();
   const [test, setTest] = useState(null);
   const [sessionId, setSessionId] = useState(new URLSearchParams(window.location.search).get('session'));
   const [currentSection, setCurrentSection] = useState('mcq');
@@ -19,8 +20,7 @@ export default function TakeTest() {
   const [error, setError] = useState(null);
   const { uuid } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [setIsFullScreen] = useState(false);
   const [warnings, setWarnings] = useState(0);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [warningMessage, setWarningMessage] = useState('');
@@ -33,8 +33,8 @@ export default function TakeTest() {
   const WARNING_COOLDOWN = 3000; // 3 seconds cooldown between warnings
 
   // Add new state for tracking violations
-  const [isTabVisible, setIsTabVisible] = useState(true);
-  const [isWindowFocused, setIsWindowFocused] = useState(true);
+  const [ setIsTabVisible] = useState(true);
+  const [ setIsWindowFocused] = useState(true);
 
   // Add event listeners for tab visibility and window focus
   useEffect(() => {
@@ -110,6 +110,7 @@ export default function TakeTest() {
           setError('Invalid test ID');
           return;
         }
+      
 
         // First, check if we need to register for the test
         if (!sessionId || sessionId === 'undefined') {
@@ -212,6 +213,7 @@ export default function TakeTest() {
       }
     };
 
+    
     loadTest();
   }, [uuid, sessionId, navigate]);
 

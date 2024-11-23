@@ -118,6 +118,22 @@ const CreateTest = () => {
     setSuccess('');
     
     try {
+      // Validate MCQs
+      for (let i = 0; i < testData.mcqs.length; i++) {
+        const mcqError = validateMCQ(testData.mcqs[i], i);
+        if (mcqError) {
+          throw new Error(mcqError);
+        }
+      }
+
+      // Validate Coding Challenges
+      for (let i = 0; i < testData.codingChallenges.length; i++) {
+        const challengeError = validateCodingChallenge(testData.codingChallenges[i]);
+        if (challengeError) {
+          throw new Error(challengeError);
+        }
+      }
+      
       // Clean and prepare data
       const preparedData = {
         ...testData,
