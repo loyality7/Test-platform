@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 // Import pages
 import Home from './pages/home/Home';
 import Login from './pages/auth/Login';
-import Register from './pages/auth/Register'; // Corrected casing
+import Register from './pages/auth/Register';
 import Profile from './pages/profile/profile';
 import UserDashboardPage from './pages/dashboard/candidate/UserDashboard';
 import VendorDashboardPage from './pages/dashboard/vendor/VendorDashboard';

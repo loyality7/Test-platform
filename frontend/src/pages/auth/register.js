@@ -1,6 +1,6 @@
 import React from 'react';
 import RegisterForm from '../../components/auth/RegisterForm';
-import './register.css';
+import './Register.css';
 
 const Register = () => {
   return (
