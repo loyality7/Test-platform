@@ -1,34 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { 
-  Clock, Check, X, Play, ChevronLeft, ChevronRight, 
-  Bookmark, Share2, Settings, Layout, Maximize2, 
-  FileText, RotateCcw, Save, Eye, EyeOff, Sun, Moon
+  Check, X, Play, ChevronLeft, ChevronRight, 
+  Eye, Sun, Moon, Maximize2, RotateCcw
 } from 'lucide-react';
 import { apiService } from '../../../services/api';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 
 export default function CodingSection({ challenges, answers, setAnswers, onSubmitCoding, testId }) {
   const [currentChallenge, setCurrentChallenge] = useState(0);
-  const [activeTab, setActiveTab] = useState('description');
   const [language, setLanguage] = useState('');
   const [testResults, setTestResults] = useState({});
   const [isRunning, setIsRunning] = useState(false);
-  const [consoleOutput, setConsoleOutput] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [layoutMode, setLayoutMode] = useState('horizontal');
-  const [fontSize, setFontSize] = useState(14);
+  const [fontSize] = useState(14);
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [theme, setTheme] = useState('vs-dark');
-  const [showLineNumbers, setShowLineNumbers] = useState(true);
-  const [wordWrap, setWordWrap] = useState(true);
-  const [autoComplete, setAutoComplete] = useState(true);
-  const [programInput, setProgramInput] = useState('');
+  const [showLineNumbers] = useState(true);
+  const [wordWrap] = useState(true);
+  const [autoComplete] = useState(true);
   const [executionResults, setExecutionResults] = useState({});
   const [submissionStatus, setSubmissionStatus] = useState({});
   const [isLoadingTestId, setIsLoadingTestId] = useState(false);
-  const navigate = useNavigate();
 
   // Add layout state and constants
   const [layout, setLayout] = useState({
@@ -112,13 +105,13 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     }
   }, [testId, setAnswers]);
 
-  const saveToLocalStorage = (newAnswers, newResults) => {
+  const saveToLocalStorage = useCallback((newAnswers, newResults) => {
     if (!testId) return;
     localStorage.setItem(`coding_${testId}`, JSON.stringify({
       answers: newAnswers,
       executionResults: newResults
     }));
-  };
+  }, [testId]);
 
   // Initialize answers with default code
   useEffect(() => {
@@ -142,7 +135,28 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         saveToLocalStorage(initialAnswers, {});
       }
     }
-  }, [challenges, language]);
+  }, [challenges, language, answers, setAnswers, saveToLocalStorage]);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (layout.isDragging) {
+        handleLeftResize(e);
+        handleRightResize(e);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setLayout(prev => ({ ...prev, isDragging: false }));
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [layout.isDragging, handleLeftResize, handleRightResize]);
 
   if (!challenges || challenges.length === 0) {
     return <div>No challenges available</div>;
@@ -545,6 +559,53 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     );
   };
 
+  // Add reset button to use handleResetCode
+  const renderEditorControls = () => {
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setCurrentChallenge(prev => Math.max(0, prev - 1))}
+          disabled={currentChallenge === 0}
+          className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 disabled:opacity-50"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        
+        <div className="flex items-center gap-1">
+          {challenges.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrentChallenge(idx)}
+              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs
+                ${currentChallenge === idx 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-[#3c3c3c] text-gray-300 hover:bg-[#4c4c4c]'}
+                ${submissionStatus[challenges[idx]._id] === 'submitted' && 'bg-green-600'}`}
+            >
+              {idx + 1}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setCurrentChallenge(prev => Math.min(challenges.length - 1, prev + 1))}
+          disabled={currentChallenge === challenges.length - 1}
+          className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 disabled:opacity-50"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+
+        <button
+          onClick={handleResetCode}
+          className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300"
+          title="Reset Code"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="relative h-full">
       {isLoadingTestId && (
@@ -556,37 +617,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
       <div className="sticky top-0 z-30 bg-[#1e1e1e] border-b border-[#3c3c3c]">
         <div className="flex items-center justify-between px-4 py-2">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentChallenge(prev => Math.max(0, prev - 1))}
-              disabled={currentChallenge === 0}
-              className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 disabled:opacity-50"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            
-            <div className="flex items-center gap-1">
-              {challenges.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentChallenge(idx)}
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs
-                    ${currentChallenge === idx 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-[#3c3c3c] text-gray-300 hover:bg-[#4c4c4c]'}
-                    ${submissionStatus[challenges[idx]._id] === 'submitted' && 'bg-green-600'}`}
-                >
-                  {idx + 1}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setCurrentChallenge(prev => Math.min(challenges.length - 1, prev + 1))}
-              disabled={currentChallenge === challenges.length - 1}
-              className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-300 disabled:opacity-50"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            {renderEditorControls()}
           </div>
 
           <div className="flex items-center gap-2">
@@ -685,14 +716,3 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     </div>
   );
 } // End of CodingSection component
-
-function twoSum(nums, target) {
-    for (let i = 0; i < nums.length; i++) {
-        for (let j = i + 1; j < nums.length; j++) {
-            if (nums[i] + nums[j] === target) {
-                return [i, j];
-            }
-        }
-    }
-    return [];
-}

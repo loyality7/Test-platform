@@ -8,17 +8,11 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 // Import pages
 import Home from './pages/home/Home';
 import Login from './pages/auth/Login';
-import Register from './pages/auth/register';
-import ForgotPassword from './pages/auth/forgot-password';  
-import ResetPassword from './pages/auth/reset-password';
+import Register from './pages/auth/Register'; // Corrected casing
 import Profile from './pages/profile/profile';
 import UserDashboardPage from './pages/dashboard/candidate/UserDashboard';
 import VendorDashboardPage from './pages/dashboard/vendor/VendorDashboard';
 import AdminDashboardPage from './pages/dashboard/admin/AdminDashboard';
-import Dashboard from './components/dashboard/vendor/Dashboard';
-
-// Import vendor pages
-import VendorDashboard from './components/dashboard/vendor/Dashboard';
 import VendorTests from './pages/vendor/Tests';
 import VendorAnalytics from './pages/vendor/Analytics';
 import VendorCandidates from './pages/vendor/Candidates';
@@ -57,8 +51,6 @@ const AppContent = () => {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
           <Route 
             path="/profile" 
             
@@ -76,12 +68,11 @@ const AppContent = () => {
             path="/dashboard/admin" 
             element={<ProtectedRoute element={<AdminDashboardPage />} allowedRoles={['admin']} />} 
           />
-          <Route path="/vendor/dashboard" element={<Dashboard />} />
           <Route 
             path="/vendor/dashboard" 
             element={
               <ProtectedRoute 
-                element={<VendorDashboard />} 
+                element={<VendorDashboardPage />} 
                 allowedRoles={['vendor', 'admin']} 
               />
             } 
@@ -164,6 +155,7 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <Router
         future={{
+          v7_startTransition: true,
           v7_relativeSplatPath: true
         }}
       >
