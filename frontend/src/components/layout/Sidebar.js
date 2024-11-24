@@ -4,7 +4,7 @@ import {
   Home, FileText, Users2, Settings, LogOut, ChevronDown, 
   Code, X, BarChart2, Calendar, Mail, BookOpen, 
   Award, Clock, Database, Activity, Layers, Target,
-  PieChart, UserCheck, Briefcase, BookMarked
+  PieChart, UserCheck, Briefcase, BookMarked, CreditCard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -23,11 +23,6 @@ const Sidebar = ({ isOpen, setIsOpen, onLogout }) => {
           path: "/vendor/dashboard", 
           icon: Activity,
           badge: { text: "5", color: "success" } 
-        },
-        { 
-          label: "Performance", 
-          path: "/vendor/dashboard/performance", 
-          icon: Target 
         },
         { 
           label: "Statistics", 
@@ -79,6 +74,16 @@ const Sidebar = ({ isOpen, setIsOpen, onLogout }) => {
         { label: "Upcoming Tests", path: "/vendor/schedule/upcoming" },
         { label: "Past Tests", path: "/vendor/schedule/past" },
         { label: "Calendar View", path: "/vendor/schedule/calendar" }
+      ]
+    },
+    {
+      label: "Payments",
+      icon: CreditCard,
+      children: [
+        { label: "Billing", path: "/vendor/payments/billing" },
+        { label: "Invoices", path: "/vendor/payments/invoices" },
+        { label: "Subscription", path: "/vendor/payments/subscription" },
+        { label: "Payment History", path: "/vendor/payments/history" }
       ]
     },
     {
