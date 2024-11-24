@@ -28,6 +28,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     rightPanel: 25,
     isDragging: false
   });
+  const [isExecuting, setIsExecuting] = useState(false);
 
   // Constants
   const MIN_PANEL_WIDTH = 20;
@@ -828,7 +829,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
             <button 
               onClick={handleExecuteCode}
-              disabled={isRunning}
+              disabled={isExecuting}
               className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 
                      disabled:opacity-50 flex items-center gap-1 text-xs"
             >

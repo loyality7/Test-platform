@@ -54,8 +54,8 @@ pipeline {
                         ssh ubuntu@16.170.231.220 ' \
                         cd /home/ubuntu/test-platform && \
                         docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest && \
-                        docker-compose down && \
-                        docker-compose up -d'
+                        docker compose down && \
+                        docker compose up -d'
                     """
                 }
             }
