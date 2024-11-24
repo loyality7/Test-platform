@@ -260,17 +260,6 @@ export default function TakeTest() {
     }
   }, [answers, navigate, test, uuid, endSession]);
 
-  // Handle test termination
-  const handleTerminate = useCallback(async (reason) => {
-    try {
-      await endSession();
-      toast.error(`Test terminated: ${reason}`);
-      navigate(`/test/shared/${uuid}`);
-    } catch (error) {
-      console.error('Error terminating test:', error);
-    }
-  }, [uuid, navigate, endSession]);
-
   // Update the cleanup effect to only end session when component unmounts
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -290,28 +279,6 @@ export default function TakeTest() {
       }
     };
   }, [sessionId, sessionEnded, endSession]);
-
-  // Add this helper function at the top of your component
-  const requestFullscreen = async (element) => {
-    const methods = [
-      'requestFullscreen',
-      'webkitRequestFullscreen',
-      'mozRequestFullScreen',
-      'msRequestFullscreen'
-    ];
-
-    for (const method of methods) {
-      if (element[method]) {
-        try {
-          await element[method].call(element);
-          return true;
-        } catch (e) {
-          console.error(`${method} failed:`, e);
-        }
-      }
-    }
-    return false;
-  };
 
   // Update the useEffect dependencies
   useEffect(() => {
