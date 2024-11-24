@@ -36,7 +36,8 @@ import {
   getTestIdByUuid,
   getFeaturedPublicTests,
   getPublicTestCategories,
-  registerForTest
+  registerForTest,
+  validateSession
 } from "../controllers/test.controller.js";
 import { auth } from "../middleware/auth.js";
 import { checkRole } from "../middleware/checkRole.js";
@@ -48,6 +49,14 @@ import { validateTestAccess } from '../middleware/validateTestAccess.js';
 import { validateProfile } from '../middleware/validateProfile.js';
 import jwt from 'jsonwebtoken';
 import TestRegistration from '../models/testRegistration.model.js';
+import { 
+  getTestAnalytics, 
+  postMCQAnalytics, 
+  postCodingAnalytics 
+} from '../controllers/analytics.controller.js';
+
+import { updateTestType } from '../controllers/test.controller.js';
+
 
 const router = express.Router();
 
@@ -75,13 +84,43 @@ router.use(auth);
  *               items:
  *                 type: object
  *                 properties:
- *                   title: { type: string }
- *                   description: { type: string }
- *                   duration: { type: number }
- *                   vendor: { type: object }
- *                   status: { type: string }
- *                   mcqs: { type: array }
- *                   codingChallenges: { type: array }
+ *                   title: 
+ *                     type: string
+ *                     example: "JavaScript Fundamentals Test"
+ *                   description: 
+ *                     type: string
+ *                     example: "A comprehensive test covering JavaScript basics including variables, functions, and objects"
+ *                   duration: 
+ *                     type: number
+ *                     example: 60
+ *                     description: Duration in minutes
+ *                   vendor: 
+ *                     type: object
+ *                     example: {
+ *                       _id: "507f1f77bcf86cd799439011",
+ *                       name: "Tech Academy",
+ *                       email: "admin@techacademy.com"
+ *                     }
+ *                   status: 
+ *                     type: string
+ *                     example: "published"
+ *                     enum: [draft, published]
+ *                   mcqs: 
+ *                     type: array
+ *                     example: [{
+ *                       question: "What is JavaScript?",
+ *                       options: ["Programming Language", "Markup Language", "Database", "Operating System"],
+ *                       correctOptions: [0],
+ *                       marks: 5
+ *                     }]
+ *                   codingChallenges: 
+ *                     type: array
+ *                     example: [{
+ *                       title: "FizzBuzz",
+ *                       description: "Write a program that prints numbers from 1 to n",
+ *                       marks: 10,
+ *                       difficulty: "easy"
+ *                     }]
  */
 router.get("/", auth, async (req, res) => {
   try {
@@ -315,34 +354,15 @@ router.post("/", auth, checkRole(["vendor", "admin"]), createTest);
  *             type: array
  *             items:
  *               type: object
- *               required:
- *                 - question
- *                 - options
- *                 - correctOptions
- *                 - answerType
- *                 - marks
- *                 - difficulty
- *               properties:
- *                 question:
- *                   type: string
- *                 options:
- *                   type: array
- *                   items:
- *                     type: string
- *                 correctOptions:
- *                   type: array
- *                   items:
- *                     type: number
- *                 answerType:
- *                   type: string
- *                   enum: [single, multiple]
- *                 marks:
- *                   type: number
- *                 difficulty:
- *                   type: string
- *                   enum: [easy, medium, hard]
- *                 explanation:
- *                   type: string
+ *               example: {
+ *                 question: "What is the output of console.log(typeof null)?",
+ *                 options: ["null", "undefined", "object", "string"],
+ *                 correctOptions: [2],
+ *                 answerType: "single",
+ *                 marks: 5,
+ *                 difficulty: "medium",
+ *                 explanation: "In JavaScript, typeof null returns 'object' due to a historical bug"
+ *               }
  *     responses:
  *       200:
  *         description: MCQs added successfully
@@ -1853,7 +1873,6 @@ router.post("/verify/:uuid", verifyTestByUuid);
  */
 router.post("/register/:uuid", auth, async (req, res) => {
   try {
-    // First get the test by UUID
     const test = await Test.findOne({ uuid: req.params.uuid });
     if (!test) {
       return res.status(404).json({
@@ -1861,9 +1880,19 @@ router.post("/register/:uuid", auth, async (req, res) => {
       });
     }
 
-    // Check if already registered using the test's _id
+    // Check authorization for assessment tests
+    if (test.type === 'assessment' && test.accessControl.type === 'private') {
+      const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
+      if (!isAllowed) {
+        return res.status(403).json({
+          message: "You are not authorized to take this test"
+        });
+      }
+    }
+
+    // Check existing registration
     const existingRegistration = await TestRegistration.findOne({
-      test: test._id,  // Use the actual ObjectId from the test
+      test: test._id,
       user: req.user._id
     });
 
@@ -1874,12 +1903,35 @@ router.post("/register/:uuid", auth, async (req, res) => {
       });
     }
 
-    // Continue with registration logic...
-    const registration = await registerForTest(req, res);
-    
+    // Create new registration with valid enum values
+    const registration = await TestRegistration.create({
+      test: test._id,
+      user: req.user._id,
+      status: 'registered', // Using valid enum value
+      testType: test.type, // This should be either 'practice' or 'assessment'
+      registrationType: test.accessControl.type, // This should be either 'public' or 'private'
+    });
+
+    // Create initial session
+    const session = await TestSession.create({
+      test: test._id,
+      user: req.user._id,
+      duration: test.duration,
+      status: 'active'
+    });
+
     return res.status(201).json({
       message: "Successfully registered for test",
-      registration
+      registration: {
+        _id: registration._id,
+        test: registration.test,
+        user: registration.user,
+        status: registration.status,
+        testType: registration.testType,
+        registrationType: registration.registrationType,
+        registeredAt: registration.registeredAt,
+        sessionId: session._id
+      }
     });
 
   } catch (error) {
@@ -2102,6 +2154,312 @@ router.post("/:uuid/session", auth, startTestSession);
  *         description: Session ended successfully
  */
 router.post("/:uuid/session/:sessionId/end", auth, endTestSession);
+
+router.get('/tests/:uuid/session/:sessionId/validate', auth, validateSession);
+
+router.get("/analytics/:testId", auth, getTestAnalytics);
+router.post("/analytics/:testId/mcq", auth, postMCQAnalytics);
+router.post("/analytics/:testId/coding", auth, postCodingAnalytics);
+
+/**
+ * @swagger
+ * /api/tests/analytics/{testId}:
+ *   get:
+ *     summary: Get analytics data for a test with optional filters
+ *     tags: [Test Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the test
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         description: Filter by specific user ID
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [mcq, coding]
+ *         description: Filter by challenge type
+ *     responses:
+ *       200:
+ *         description: Analytics data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Analytics retrieved successfully"
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalParticipants:
+ *                       type: number
+ *                       example: 50
+ *                     averageTimeSpent:
+ *                       type: number
+ *                       example: 120
+ *                       description: Average time in seconds
+ *                     warningStats:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: number
+ *                           example: 25
+ *                         average:
+ *                           type: number
+ *                           example: 0.5
+ *                     performanceStats:
+ *                       type: object
+ *                       properties:
+ *                         averageScore:
+ *                           type: number
+ *                           example: 85.5
+ *                         averageTestCasesPassed:
+ *                           type: number
+ *                           example: 4.2
+ */
+
+/**
+ * @swagger
+ * /api/tests/analytics/{testId}/mcq:
+ *   post:
+ *     summary: Record analytics data for an MCQ question
+ *     tags: [Test Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the test
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - questionId
+ *               - analyticsData
+ *             properties:
+ *               questionId:
+ *                 type: string
+ *                 example: "507f1f77bcf86cd799439011"
+ *               analyticsData:
+ *                 type: object
+ *                 properties:
+ *                   timeSpent:
+ *                     type: number
+ *                     example: 45
+ *                     description: Time spent in seconds
+ *                   warnings:
+ *                     type: number
+ *                     example: 0
+ *                   tabSwitches:
+ *                     type: number
+ *                     example: 1
+ *                   copyPasteAttempts:
+ *                     type: number
+ *                     example: 0
+ *                   mouseMoves:
+ *                     type: number
+ *                     example: 23
+ *                   keystrokes:
+ *                     type: number
+ *                     example: 15
+ *                   focusLostCount:
+ *                     type: number
+ *                     example: 1
+ *                   submissionAttempts:
+ *                     type: number
+ *                     example: 1
+ *                   score:
+ *                     type: number
+ *                     example: 5
+ *                   browser:
+ *                     type: string
+ *                     example: "Chrome 96.0.4664"
+ *                   os:
+ *                     type: string
+ *                     example: "Windows 10"
+ *                   device:
+ *                     type: string
+ *                     example: "Desktop"
+ *                   screenResolution:
+ *                     type: string
+ *                     example: "1920x1080"
+ */
+
+/**
+ * @swagger
+ * /api/tests/analytics/{testId}/coding:
+ *   post:
+ *     summary: Record analytics data for a coding challenge
+ *     tags: [Test Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the test
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - challengeId
+ *               - analyticsData
+ *             properties:
+ *               challengeId:
+ *                 type: string
+ *                 example: "507f1f77bcf86cd799439011"
+ *               analyticsData:
+ *                 type: object
+ *                 properties:
+ *                   timeSpent:
+ *                     type: number
+ *                     example: 300
+ *                     description: Time spent in seconds
+ *                   warnings:
+ *                     type: number
+ *                     example: 0
+ *                   tabSwitches:
+ *                     type: number
+ *                     example: 2
+ *                   copyPasteAttempts:
+ *                     type: number
+ *                     example: 1
+ *                   mouseMoves:
+ *                     type: number
+ *                     example: 150
+ *                   keystrokes:
+ *                     type: number
+ *                     example: 500
+ *                   focusLostCount:
+ *                     type: number
+ *                     example: 3
+ *                   submissionAttempts:
+ *                     type: number
+ *                     example: 2
+ *                   errorCount:
+ *                     type: number
+ *                     example: 3
+ *                   executionTime:
+ *                     type: number
+ *                     example: 0.45
+ *                     description: Execution time in seconds
+ *                   memoryUsage:
+ *                     type: number
+ *                     example: 5242880
+ *                     description: Memory usage in bytes
+ *                   testCasesPassed:
+ *                     type: number
+ *                     example: 8
+ *                   totalTestCases:
+ *                     type: number
+ *                     example: 10
+ *                   score:
+ *                     type: number
+ *                     example: 80
+ *                   browser:
+ *                     type: string
+ *                     example: "Chrome 96.0.4664"
+ *                   os:
+ *                     type: string
+ *                     example: "Windows 10"
+ *                   device:
+ *                     type: string
+ *                     example: "Desktop"
+ *                   screenResolution:
+ *                     type: string
+ *                     example: "1920x1080"
+ */
+
+/**
+ * @swagger
+ * /api/tests/{testId}/type:
+ *   patch:
+ *     summary: Update test type (assessment/practice)
+ *     tags: [Tests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the test to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [assessment, practice]
+ *                 description: New type for the test
+ *     responses:
+ *       200:
+ *         description: Test type updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Test type updated successfully
+ *                 test:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: 507f1f77bcf86cd799439011
+ *                     title:
+ *                       type: string
+ *                       example: Sample Test
+ *                     type:
+ *                       type: string
+ *                       enum: [assessment, practice]
+ *                     status:
+ *                       type: string
+ *                       enum: [draft, published, archived]
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid test type provided
+ *       401:
+ *         description: Unauthorized - User not logged in
+ *       403:
+ *         description: Forbidden - User not authorized to update this test
+ *       404:
+ *         description: Test not found
+ *       500:
+ *         description: Server error while updating test type
+ */
+router.patch('/:testId/type', auth, validateTestAccess, updateTestType);
 
 export default router;
 

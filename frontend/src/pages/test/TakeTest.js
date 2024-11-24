@@ -1,11 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, } from 'react-router-dom';
 import apiService from '../../services/api';
 import MCQSection from './components/MCQSection';
 import CodingSection from './components/CodingSection';
 import Proctoring from './Proctoring';
 import WarningModal from './components/WarningModal';
-import { Clock, FileText } from 'lucide-react';
+import { Clock, FileText, CheckCircle } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+
+// Add this helper function at the top of the file
+const updateLocalAnalytics = (newAnalytics) => {
+  try {
+    localStorage.setItem('testAnalytics', JSON.stringify(newAnalytics));
+  } catch (error) {
+    console.error('Error saving analytics to localStorage:', error);
+  }
+};
 
 export default function TakeTest() {
   const [test, setTest] = useState(null);
@@ -19,23 +29,291 @@ export default function TakeTest() {
   const [error, setError] = useState(null);
   const { uuid } = useParams();
   const navigate = useNavigate();
-  const [setIsFullScreen] = useState(false);
-  const [warnings, setWarnings] = useState(0);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [warningMessage, setWarningMessage] = useState('');
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
-  const MAX_WARNINGS = 10;
 
   // Ref to track last warning time
   const lastWarningTime = useRef(0);
   const WARNING_COOLDOWN = 3000; // 3 seconds cooldown between warnings
 
   // Add new state for tracking violations
-  const [ setIsTabVisible] = useState(true);
-  const [ setIsWindowFocused] = useState(true);
+  const [isTabVisible, setIsTabVisible] = useState(true);
+  const [isWindowFocused, setIsWindowFocused] = useState(true);
 
-  // Add event listeners for tab visibility and window focus
+  // Add new state variables
+  const [sessionEnded, setSessionEnded] = useState(false);
+
+  // Update analytics state to include section-specific metrics
+  const [analytics, setAnalytics] = useState({
+    warnings: 0,
+    tabSwitches: 0,
+    copyPasteAttempts: 0,
+    timeSpent: 0,
+    mouseMoves: 0,
+    keystrokes: 0,
+    browserEvents: [],
+    focusLostCount: 0,
+    submissionAttempts: 0,
+    score: 0,
+    mcqMetrics: {
+      timePerQuestion: {},
+      changedAnswers: {},
+      skippedQuestions: new Set(),
+    },
+    codingMetrics: {
+      timePerChallenge: {},
+      compilationAttempts: {},
+      testCaseRuns: {},
+      errorFrequency: {},
+    },
+    browser: navigator.userAgent,
+    os: navigator.platform,
+    device: navigator.userAgent,
+    screenResolution: `${window.screen.width}x${window.screen.height}`
+  });
+
+  // Modify setAnalytics to automatically save to localStorage
+  const updateAnalytics = useCallback((newData) => {
+    setAnalytics(prev => {
+      const updatedAnalytics = typeof newData === 'function' 
+        ? newData(prev) 
+        : { ...prev, ...newData };
+      
+      updateLocalAnalytics(updatedAnalytics);
+      return updatedAnalytics;
+    });
+  }, []);
+
+  // Load analytics from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedAnalytics = localStorage.getItem('testAnalytics');
+      if (savedAnalytics) {
+        const parsed = JSON.parse(savedAnalytics);
+        setAnalytics(parsed);
+      }
+    } catch (error) {
+      console.error('Error loading analytics from localStorage:', error);
+    }
+  }, []);
+
+  // Update handleWarning to remove max warnings check
+  const handleWarning = useCallback((message) => {
+    const now = Date.now();
+    const currentCooldown = message.includes('tab') || message.includes('window') ? 1000 : WARNING_COOLDOWN;
+    
+    if (now - lastWarningTime.current < currentCooldown) {
+      return;
+    }
+    
+    lastWarningTime.current = now;
+    
+    updateAnalytics(prev => ({
+      ...prev,
+      warnings: prev.warnings + 1,
+      browserEvents: [...prev.browserEvents, {
+        type: 'warning',
+        message,
+        timestamp: new Date().toISOString()
+      }]
+    }));
+    
+    setWarningMessage(message);
+    setShowWarningModal(true);
+  }, []);
+
+  // Update endSession to not include analytics submission
+  const endSession = useCallback(async () => {
+    if (sessionId && !sessionEnded) {
+      try {
+        // Only end the session
+        await apiService.post(`tests/sessions/${sessionId}/end`, {
+          answers: answers,
+          submissionType: 'manual'
+        });
+        
+        setSessionEnded(true);
+        localStorage.removeItem('currentTestSession');
+      } catch (error) {
+        console.error('Error ending session:', error);
+        toast.error('Failed to end test session');
+      }
+    }
+  }, [sessionId, sessionEnded, answers]);
+
+  // Add analytics tracking for various events
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && !showInstructions) {
+        handleWarning('Switching tabs is not allowed during the test');
+        updateAnalytics(prev => ({
+          ...prev,
+          tabSwitches: prev.tabSwitches + 1
+        }));
+      }
+      setIsTabVisible(!document.hidden);
+    };
+
+    const handleFocus = () => setIsWindowFocused(true);
+
+    const handleBlur = () => {
+      if (!showInstructions) {
+        handleWarning('Leaving the test window is not allowed');
+        updateAnalytics(prev => ({
+          ...prev,
+          focusLostCount: prev.focusLostCount + 1
+        }));
+      }
+      setIsWindowFocused(false);
+    };
+
+    const handleCopyPaste = (e) => {
+      if (!showInstructions) {
+        e.preventDefault();
+        handleWarning('Copying/pasting is not allowed');
+        updateAnalytics(prev => ({
+          ...prev,
+          copyPasteAttempts: prev.copyPasteAttempts + 1
+        }));
+      }
+    };
+
+    const handleKeyPress = () => {
+      updateAnalytics(prev => ({
+        ...prev,
+        keystrokes: prev.keystrokes + 1
+      }));
+    };
+
+    const handleMouseMove = () => {
+      updateAnalytics(prev => ({
+        ...prev,
+        mouseMoves: prev.mouseMoves + 1
+      }));
+    };
+
+    // Add event listeners
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('copy', handleCopyPaste);
+    document.addEventListener('paste', handleCopyPaste);
+    document.addEventListener('keypress', handleKeyPress);
+    document.addEventListener('mousemove', handleMouseMove);
+
+    // Store test start time
+    localStorage.setItem('testStartTime', new Date().toISOString());
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('copy', handleCopyPaste);
+      document.removeEventListener('paste', handleCopyPaste);
+      document.removeEventListener('keypress', handleKeyPress);
+      document.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [showInstructions, handleWarning, updateAnalytics]);
+
+  // Simplify handleStartTest
+  const handleStartTest = useCallback(async () => {
+    try {
+      setShowInstructions(false);
+      
+      // Request fullscreen when starting test
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      }
+      setIsFullScreen(true);
+    } catch (error) {
+      console.error('Error starting test:', error);
+      toast.error('Failed to start test');
+    }
+  }, []);
+
+  // Simplify handleSubmit
+  const handleSubmit = useCallback(async () => {
+    try {
+      await endSession();
+      
+      const totalScore = (test?.mcqSubmission?.totalScore || 0) + 
+                        (test?.codingSubmission?.totalScore || 0);
+
+      navigate('/test/completed', { 
+        state: { 
+          testId: uuid,
+          submission: {
+            mcq: answers.mcq,
+            coding: answers.coding,
+            totalScore,
+            testType: test.type
+          }
+        }
+      });
+    } catch (error) {
+      setError(error.message || 'Error completing test');
+    }
+  }, [answers, navigate, test, uuid, endSession]);
+
+  // Handle test termination
+  const handleTerminate = useCallback(async (reason) => {
+    try {
+      await endSession();
+      toast.error(`Test terminated: ${reason}`);
+      navigate(`/test/shared/${uuid}`);
+    } catch (error) {
+      console.error('Error terminating test:', error);
+    }
+  }, [uuid, navigate, endSession]);
+
+  // Update the cleanup effect to only end session when component unmounts
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (sessionId && !sessionEnded) {
+        event.preventDefault();
+        event.returnValue = 'Are you sure you want to leave? Your test progress will be lost.';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Only end session if it's not already ended and component is unmounting
+      if (sessionId && !sessionEnded) {
+        endSession();
+      }
+    };
+  }, [sessionId, sessionEnded, endSession]);
+
+  // Add this helper function at the top of your component
+  const requestFullscreen = async (element) => {
+    const methods = [
+      'requestFullscreen',
+      'webkitRequestFullscreen',
+      'mozRequestFullScreen',
+      'msRequestFullscreen'
+    ];
+
+    for (const method of methods) {
+      if (element[method]) {
+        try {
+          await element[method].call(element);
+          return true;
+        } catch (e) {
+          console.error(`${method} failed:`, e);
+        }
+      }
+    }
+    return false;
+  };
+
+  // Update the useEffect dependencies
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && !showInstructions) {
@@ -100,105 +378,76 @@ export default function TakeTest() {
     };
   }, [showInstructions, handleWarning, setIsTabVisible, setIsWindowFocused]);
 
-  // Load Test Data
+  // Add new state for testId
+  const [testId, setTestId] = useState(localStorage.getItem('currentTestId'));
+
+  // Update loadTest function to include testId handling
   useEffect(() => {
     const loadTest = async () => {
       try {
         if (!uuid) {
-          console.log('Missing uuid:', uuid);
           setError('Invalid test ID');
           return;
         }
-      
 
-        // First, check if we need to register for the test
+        // Get testId from localStorage or parse endpoint
+        let currentTestId = localStorage.getItem('currentTestId');
+        if (!currentTestId) {
+          const parseResponse = await apiService.get(`tests/parse/${uuid}`);
+          if (parseResponse?.data?.id) {
+            currentTestId = parseResponse.data.id;
+            localStorage.setItem('currentTestId', currentTestId);
+            setTestId(currentTestId);
+          } else {
+            throw new Error('Failed to parse test ID');
+          }
+        }
+
+        // Load test data from API
+        const testResponse = await apiService.get(`tests/${uuid}/take`);
+        if (!testResponse?.data) {
+          throw new Error('Invalid test data received');
+        }
+        
+        setTest(testResponse.data);
+        localStorage.setItem('currentTestData', JSON.stringify(testResponse.data));
+
+        // If no session exists, create one
         if (!sessionId || sessionId === 'undefined') {
-          console.log('No valid session ID found, attempting to register for test');
           try {
-            // First, verify the test to get testId if we have UUID
-            let testId = null;
-            if (uuid) {
-              console.log('Verifying test with UUID:', uuid);
-              const verifyResponse = await apiService.post(`tests/verify/${uuid}`);
-              console.log('Verify response:', verifyResponse);
-              
-              if (verifyResponse?.test?.id) {
-                testId = verifyResponse.test.id;
-                console.log('Got testId from UUID verification:', testId);
+            const sessionResponse = await apiService.post(`tests/${uuid}/session`, {
+              deviceInfo: {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                screenResolution: `${window.screen.width}x${window.screen.height}`,
+                language: navigator.language
               }
-            }
+            });
 
-            // Now register using testId if available, fallback to UUID
-            const registrationEndpoint = testId 
-              ? `tests/${testId}/register`
-              : `tests/register/${uuid}`;
-            
-            console.log('Using registration endpoint:', registrationEndpoint);
-            
-            const registrationResponse = await apiService.post(registrationEndpoint);
-            console.log('Registration response:', registrationResponse);
-
-            // Handle the session from the response
-            if (registrationResponse?.session?.id) {
-              const sessionId = registrationResponse.session.id;
-              console.log('Found session ID:', sessionId);
+            if (sessionResponse?.session?._id) {
+              const newSessionId = sessionResponse.session._id;
               
-              // Update URL with session ID
-              const newUrl = `${window.location.pathname}?session=${sessionId}`;
+              // Update URL and state
+              const newUrl = `${window.location.pathname}?session=${newSessionId}`;
               window.history.replaceState({}, '', newUrl);
-              setSessionId(sessionId);
+              setSessionId(newSessionId);
+              
+              // Store session info
+              localStorage.setItem('currentTestSession', JSON.stringify({
+                sessionId: newSessionId,
+                testId: uuid,
+                startTime: new Date().toISOString(),
+                status: 'active'
+              }));
+            }
+          } catch (error) {
+            if (error.response?.data?.message === 'Already registered for this test') {
+              navigate(`/test/shared/${uuid}`);
               return;
             }
-            
-            // If we get here, we don't have a valid session ID
-            console.error('No valid session ID in response:', registrationResponse);
-            throw new Error('No valid session ID found in response');
-          } catch (error) {
-            console.error('Registration error:', error);
-            setError(error.response?.data?.message || error.message || 'Failed to register for test');
-            return;
+            throw error;
           }
         }
-
-        // Only proceed with test loading if we have a valid session ID
-        if (sessionId && sessionId !== 'undefined') {
-          console.log('Loading test with valid session:', { uuid, sessionId });
-          try {
-            const response = await apiService.get(`/tests/${uuid}/take`, {
-              params: { session: sessionId }
-            });
-            
-            console.log('Test data response:', response);
-            
-            if (!response?.data) {
-              throw new Error('Invalid response structure');
-            }
-
-            const testData = response.data;
-            setTest({
-              title: testData.title,
-              description: testData.description,
-              duration: testData.duration,
-              totalMarks: testData.totalMarks,
-              mcqs: testData.mcqs.map(mcq => ({
-                ...mcq,
-                id: mcq._id
-              })),
-              codingChallenges: testData.codingChallenges.map(challenge => ({
-                ...challenge,
-                id: challenge._id
-              }))
-            });
-            setLoading(false);
-          } catch (error) {
-            console.error('Error loading test data:', error);
-            setError(error.message || 'Error loading test');
-            setLoading(false);
-          }
-        } else {
-          throw new Error('No valid session ID available');
-        }
-
       } catch (error) {
         console.error('Error in loadTest:', error);
         if (error.response?.status === 401) {
@@ -212,7 +461,6 @@ export default function TakeTest() {
       }
     };
 
-    
     loadTest();
   }, [uuid, sessionId, navigate]);
 
@@ -223,18 +471,7 @@ export default function TakeTest() {
         // Request camera access
         await navigator.mediaDevices.getUserMedia({ video: true });
         console.log('Camera access granted');
-
-        // Request location access
-        navigator.geolocation.getCurrentPosition(
-          () => {
-            console.log('Location access granted');
-            setPermissionsGranted(true);
-          },
-          (error) => {
-            console.error('Location access denied:', error);
-            alert('Location access is required to proceed with the test.');
-          }
-        );
+        setPermissionsGranted(true);
       } catch (error) {
         console.error('Camera access denied:', error);
         alert('Camera access is required to proceed with the test.');
@@ -244,77 +481,49 @@ export default function TakeTest() {
     requestPermissions();
   }, []);
 
-  // Fullscreen handler
-  const handleStartTest = async () => {
-    try {
-      // Request fullscreen on user click
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) {
-        await elem.requestFullscreen();
-      } else if (elem.webkitRequestFullscreen) {
-        await elem.webkitRequestFullscreen();
-      } else if (elem.mozRequestFullScreen) {
-        await elem.mozRequestFullScreen();
-      } else if (elem.msRequestFullscreen) {
-        await elem.msRequestFullscreen();
-      }
-      
-      setIsFullScreen(true);
-      setShowInstructions(false);
-    } catch (error) {
-      console.error('Fullscreen error:', error);
-      alert('Please enable fullscreen to continue the test. If the issue persists, check your browser settings.');
-      handleWarning('Please enable full screen to continue the test');
-    }
-  };
-
-  // Add fullscreen change listener
+  // Update the fullscreen change effect to be less strict
   useEffect(() => {
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && !showInstructions) {
-        handleWarning('Exiting fullscreen mode is not allowed');
-        document.documentElement.requestFullscreen().catch(() => {
-          handleWarning('Please enable fullscreen to continue the test');
-        });
+      const isInFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+      
+      setIsFullScreen(isInFullscreen);
+      
+      if (!isInFullscreen && !showInstructions) {
+        // Just show a warning instead of forcing fullscreen
+        handleWarning('You have exited fullscreen mode. Please return to fullscreen for the best test experience.');
       }
-      setIsFullScreen(!!document.fullscreenElement);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [showInstructions, handleWarning, setIsFullScreen]);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
 
-  // Handle Warnings from Proctoring with cooldown
-  const handleWarning = (message) => {
-    const now = Date.now();
-    // Reduced cooldown for serious violations
-    const currentCooldown = message.includes('tab') || message.includes('window') ? 1000 : WARNING_COOLDOWN;
-    
-    if (now - lastWarningTime.current < currentCooldown) {
-      return;
-    }
-    
-    lastWarningTime.current = now;
-    
-    setWarnings(prev => {
-      const newCount = prev + 1;
-      if (newCount >= MAX_WARNINGS) {
-        handleSubmit(); // Auto-submit the test
-        return prev;
-      }
-      return newCount;
-    });
-    
-    setWarningMessage(message);
-    setShowWarningModal(true);
-  };
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, [showInstructions, handleWarning]);
 
-  // Handle Test Submission
-  const handleSubmit = async () => {
+  const handleCodingSubmission = async (submission) => {
     try {
-      // Calculate total score from MCQ and coding submissions
-      const totalScore = (test.mcqSubmission?.totalScore || 0) + 
-                        (test.codingSubmission?.totalScore || 0);
+      // Update test state with coding submission
+      setTest(prev => ({
+        ...prev,
+        status: 'completed',
+        codingSubmission: submission,
+        totalScore: (prev?.mcqSubmission?.totalScore || 0) + (submission?.totalScore || 0)
+      }));
+
+      // End the session since both sections are complete
+      await endSession();
 
       // Navigate to completion page
       navigate('/test/completed', { 
@@ -323,12 +532,14 @@ export default function TakeTest() {
           submission: {
             mcq: answers.mcq,
             coding: answers.coding,
-            totalScore: totalScore
+            totalScore: (test?.mcqSubmission?.totalScore || 0) + (submission?.totalScore || 0),
+            testType: test?.type
           }
         }
       });
     } catch (error) {
-      setError(error.message || 'Error completing test');
+      console.error('Failed to process coding submission:', error);
+      setError('Failed to process coding submission');
     }
   };
 
@@ -347,31 +558,6 @@ export default function TakeTest() {
     }
   };
 
-  const handleCodingSubmission = async (submission) => {
-    try {
-      setTest(prev => ({
-        ...prev,
-        status: 'completed',
-        codingSubmission: submission,
-        totalScore: submission.totalScore
-      }));
-
-      // Navigate to completion page without session
-      navigate('/test/completed', { 
-        state: { 
-          testId: uuid,
-          submission: {
-            mcq: answers.mcq,
-            coding: answers.coding,
-            totalScore: submission.totalScore
-          }
-        }
-      });
-    } catch (error) {
-      setError('Failed to process coding submission');
-    }
-  };
-
   // Add this helper function at the top of your component
   const isAllMCQsAnswered = (mcqAnswers, totalMCQs) => {
     return Object.keys(mcqAnswers).length === totalMCQs;
@@ -384,6 +570,180 @@ export default function TakeTest() {
       [section]: newAnswers || {}
     }));
   };
+
+  // Add these new state variables at the beginning of the component
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const timerRef = useRef(null);
+
+  // Update the timer effect to remove half-time check
+  useEffect(() => {
+    if (test && !showInstructions) {
+      const durationMs = test.duration * 60 * 1000;
+      const endTime = new Date().getTime() + durationMs;
+      
+      const updateTimer = () => {
+        const now = new Date().getTime();
+        const remaining = endTime - now;
+        
+        if (remaining <= 0) {
+          clearInterval(timerRef.current);
+          handleSubmit(); // Auto-submit when time is up
+          return;
+        }
+        
+        setTimeRemaining(remaining);
+      };
+
+      // Initialize timer
+      updateTimer();
+      timerRef.current = setInterval(updateTimer, 1000);
+
+      return () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+      };
+    }
+  }, [test, showInstructions, handleSubmit]);
+
+  // Add these functions to disable developer tools and right-click
+  useEffect(() => {
+    const disableDevTools = () => {
+      // Disable right-click
+      document.addEventListener('contextmenu', (e) => e.preventDefault());
+      
+      // Disable keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        if (
+          // Disable F12
+          e.key === 'F12' ||
+          // Disable Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+          (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+          // Disable Ctrl+U (view source)
+          (e.ctrlKey && e.key === 'U')
+        ) {
+          e.preventDefault();
+          handleWarning('Developer tools are not allowed during the test');
+        }
+      });
+
+      // Detect devtools opening
+      const checkDevTools = () => {
+        const threshold = 160;
+        if (
+          window.outerWidth - window.innerWidth > threshold ||
+          window.outerHeight - window.innerHeight > threshold
+        ) {
+          handleWarning('Developer tools are not allowed during the test');
+        }
+      };
+
+      setInterval(checkDevTools, 1000);
+    };
+
+    if (!showInstructions) {
+      disableDevTools();
+    }
+  }, [showInstructions, handleWarning]);
+
+  // Inside TakeTest component, add new state for confirmation dialog
+  const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
+
+  // Add helper function to check if all sections are completed
+  const isTestCompleted = useCallback(() => {
+    return test?.mcqSubmission && test?.codingSubmission;
+  }, [test]);
+
+  // Update handleConfirmedSubmit to navigate immediately
+  const handleConfirmedSubmit = async () => {
+    setShowSubmitConfirmation(false);
+    
+    // Navigate immediately
+    navigate('/test/completed', { 
+      state: { 
+        testId: uuid,
+        submission: {
+          mcq: answers.mcq,
+          coding: answers.coding,
+          totalScore: (test?.mcqSubmission?.totalScore || 0) + 
+                     (test?.codingSubmission?.totalScore || 0),
+          testType: test.type
+        }
+      }
+    });
+
+    // Handle analytics submission in the background
+    try {
+      const storedAnalytics = localStorage.getItem('testAnalytics');
+      if (storedAnalytics) {
+        const analyticsData = JSON.parse(storedAnalytics);
+        
+        // Calculate final time spent
+        const startTime = new Date(localStorage.getItem('testStartTime'));
+        const endTime = new Date();
+        const timeSpentSeconds = Math.floor((endTime - startTime) / 1000);
+
+        // Prepare final analytics data
+        const finalAnalytics = {
+          ...analyticsData,
+          timeSpent: timeSpentSeconds,
+          endTime: endTime.toISOString(),
+          testStatus: isTestCompleted() ? 'completed' : 'incomplete',
+          finalScore: (test?.mcqSubmission?.totalScore || 0) + (test?.codingSubmission?.totalScore || 0),
+          sectionCompletion: {
+            mcq: !!test?.mcqSubmission,
+            coding: !!test?.codingSubmission
+          },
+          submissionType: 'manual',
+          sessionId: sessionId
+        };
+
+        // Submit analytics in background
+        await Promise.all([
+          apiService.post(`analytics/test/${testId}`, {
+            analyticsData: finalAnalytics
+          }),
+          endSession()
+        ]);
+
+        // Clear analytics from localStorage after successful submission
+        localStorage.removeItem('testAnalytics');
+      }
+    } catch (error) {
+      console.error('Error submitting analytics:', error);
+      // Don't show error toast since user is already on completion page
+    }
+  };
+
+  // Add this function near your other handler functions
+  const handleFinalSubmitClick = useCallback(() => {
+    // Show confirmation dialog regardless of completion status
+    setShowSubmitConfirmation(true);
+    
+    // Optional: Show warning toast if sections are incomplete
+    if (!isTestCompleted()) {
+      toast(
+        <div className="flex flex-col gap-2">
+          <p className="font-semibold">Warning: Incomplete Test!</p>
+          <p className="text-sm">Please complete all sections before submitting:</p>
+          <ul className="list-disc list-inside text-sm">
+            {!test?.mcqSubmission && <li>MCQ section not completed</li>}
+            {!test?.codingSubmission && <li>Coding section not completed</li>}
+          </ul>
+          <p className="text-sm mt-2">Submitting now will result in loss of marks.</p>
+        </div>,
+        {
+          duration: 5000,
+          icon: '⚠️',
+          style: {
+            background: '#FEF2F2',
+            color: '#991B1B',
+            border: '1px solid #EF4444',
+          }
+        }
+      );
+    }
+  }, [test, isTestCompleted]);
 
   // Render Loading State
   if (loading) {
@@ -459,20 +819,6 @@ export default function TakeTest() {
                 </svg>
                 <span className="ml-2">Camera Access: {permissionsGranted ? 'Granted' : 'Required'}</span>
               </div>
-              <div className="flex items-center">
-                <svg 
-                  className={`w-6 h-6 ${permissionsGranted ? 'text-green-500' : 'text-gray-400'}`}
-                  fill="none" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth="2" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span className="ml-2">Location Access: {permissionsGranted ? 'Granted' : 'Required'}</span>
-              </div>
             </div>
           </div>
 
@@ -491,7 +837,7 @@ export default function TakeTest() {
             </button>
             {!permissionsGranted && (
               <p className="mt-2 text-sm text-red-500">
-                Please grant camera and location access to continue
+                Please grant camera access to continue
               </p>
             )}
           </div>
@@ -509,27 +855,59 @@ export default function TakeTest() {
           <div className="flex justify-between items-start py-3">
             {/* Test Info */}
             <div>
-              <h1 className="text-2xl font-bold text-gray-800">{test.title}</h1>
-              <div className="flex items-center gap-4 mt-1">
-                <div className="flex items-center text-gray-600 text-sm">
-                  <Clock className="w-4 h-4 mr-1" />
-                  <span>{test.duration} minutes</span>
+              <h1 className="text-2xl font-bold text-gray-800">
+                {test?.title || 'Loading test...'}
+              </h1>
+              {test && (
+                <div className="flex items-center gap-4 mt-1">
+                  <div className="flex items-center text-gray-600 text-sm">
+                    <Clock className="w-4 h-4 mr-1" />
+                    <span className="font-mono">
+                      {Math.floor(timeRemaining / (1000 * 60 * 60)).toString().padStart(2, '0')}:
+                      {Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2, '0')}:
+                      {Math.floor((timeRemaining % (1000 * 60)) / 1000).toString().padStart(2, '0')}
+                    </span>
+                  </div>
+                  <div className="flex items-center text-gray-600 text-sm">
+                    <FileText className="w-4 h-4 mr-1" />
+                    <span>{test.totalMarks} marks</span>
+                  </div>
+                  {/* Add status indicators */}
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={`px-2 py-1 rounded ${isFullScreen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {isFullScreen ? 'Fullscreen' : 'Not Fullscreen'}
+                    </span>
+                    <span className={`px-2 py-1 rounded ${isTabVisible ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {isTabVisible ? 'Tab Active' : 'Tab Inactive'}
+                    </span>
+                    <span className={`px-2 py-1 rounded ${isWindowFocused ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {isWindowFocused ? 'Window Focused' : 'Window Unfocused'}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center text-gray-600 text-sm">
-                  <FileText className="w-4 h-4 mr-1" />
-                  <span>{test.totalMarks} marks</span>
-                </div>
-              </div>
+              )}
             </div>
 
-            {/* Proctoring Camera */}
-            <div className="w-[180px] h-[135px] bg-black rounded-lg overflow-hidden shadow-lg">
-              <Proctoring
-                testId={uuid}
-                sessionId={sessionId}
-                onWarning={handleWarning}
-                onViolation={() => {}}
-              />
+            {/* Add Submit button before the camera */}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleFinalSubmitClick}
+                className="px-4 py-2 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+              >
+                <CheckCircle className="w-5 h-5" />
+                Final Submit
+              </button>
+              
+              {/* Existing camera div */}
+              <div className="w-[180px] h-[135px] bg-black rounded-lg overflow-hidden shadow-lg">
+                <Proctoring
+                  testId={uuid}
+                  sessionId={sessionId}
+                  onWarning={handleWarning}
+                  onViolation={() => {}}
+                  className="w-full h-full"
+                />
+              </div>
             </div>
           </div>
 
@@ -574,7 +952,8 @@ export default function TakeTest() {
               answers={answers.mcq}
               setAnswers={(mcqAnswers) => handleAnswerUpdate('mcq', mcqAnswers)}
               onSubmitMCQs={handleMCQSubmission}
-              isAllAnswered={isAllMCQsAnswered(answers.mcq, test.mcqs?.length)}
+              analytics={analytics}
+              setAnalytics={updateAnalytics}
             />
           ) : (
             <CodingSection
@@ -582,6 +961,9 @@ export default function TakeTest() {
               answers={answers.coding}
               setAnswers={(codingAnswers) => handleAnswerUpdate('coding', codingAnswers)}
               onSubmitCoding={handleCodingSubmission}
+              testId={uuid}
+              analytics={analytics}
+              setAnalytics={updateAnalytics}
             />
           )}
         </div>
@@ -597,10 +979,53 @@ export default function TakeTest() {
       {showWarningModal && (
         <WarningModal
           message={warningMessage}
-          warningCount={warnings}
-          maxWarnings={MAX_WARNINGS}
+          warningCount={analytics.warnings}
           onClose={() => setShowWarningModal(false)}
         />
+      )}
+
+      {showSubmitConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Ready to Submit?</h3>
+            <div className="space-y-4 mb-6">
+              <p className="text-gray-600">
+                You have completed:
+              </p>
+              <ul className="list-none space-y-2">
+                <li className="flex items-center">
+                  <CheckCircle 
+                    className={`w-5 h-5 mr-2 ${test?.mcqSubmission ? 'text-green-500' : 'text-gray-300'}`}
+                  />
+                  <span>MCQ Section</span>
+                </li>
+                <li className="flex items-center">
+                  <CheckCircle 
+                    className={`w-5 h-5 mr-2 ${test?.codingSubmission ? 'text-green-500' : 'text-gray-300'}`}
+                  />
+                  <span>Coding Section</span>
+                </li>
+              </ul>
+              <p className="text-sm text-gray-500 mt-4">
+                This action cannot be undone. Are you sure you want to submit?
+              </p>
+            </div>
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setShowSubmitConfirmation(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmedSubmit}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Confirm Submit
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -11,7 +11,8 @@ import {
   getTestCodingSubmissions, 
   getChallengeSubmissions, 
   getMCQSubmissions, 
-  getTestResults 
+  getTestResults, 
+  getSubmissionAttempts 
 } from '../controllers/submission.controller.js';
 import { validateSubmission } from '../middleware/validateSubmission.js';
 import { validateTestAccess } from '../middleware/validateTestAccess.js';
@@ -522,5 +523,30 @@ router.get('/test/:testId/mcq/:questionId', auth, checkRole(['admin', 'vendor'])
  *       500:
  *         description: Error retrieving test results
  */
+
+/**
+ * @swagger
+ * /api/submissions/test/{testId}/user/{userId}/attempts:
+ *   get:
+ *     summary: Get all submission attempts for a user's test
+ *     tags: [Submissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of submission attempts
+ */
+router.get('/test/:testId/user/:userId/attempts', auth, getSubmissionAttempts);
 
 export default router; 

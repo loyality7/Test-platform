@@ -58,9 +58,15 @@ export const apiService = {
   },
 
   post: async (endpoint, data = {}, config = {}) => {
+    console.log('API Request:', {
+      endpoint,
+      data
+    });
+    
     try {
       const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
       const response = await axiosInstance.post(path, data, config);
+      console.log('API Response:', response);
       return response;
     } catch (error) {
       console.error(`POST ${endpoint} failed:`, error);

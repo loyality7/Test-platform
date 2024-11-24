@@ -19,19 +19,26 @@ export default function TestCompleted() {
         
         <p className="text-gray-600 mb-8">
           Thank you for completing the test. Your responses have been submitted successfully.
-          {sessionId && <span className="block mt-2">Session ID: {sessionId}</span>}
+          {sessionId ? (
+            <span className="block mt-2">Session ID: {sessionId}</span>
+          ) : (
+            <span className="block mt-2 text-yellow-600">
+              If your session ended due to technical issues or you encountered any problems, 
+              please contact our support team at sarath@hysteresis.in
+            </span>
+          )}
         </p>
 
         <div className="space-x-4">
           <Link
-            to="/dashboard"
+            to="/dashboard/user"
             className="inline-block bg-blue-600 text-white py-2 px-6 rounded hover:bg-blue-700"
           >
             Return to Dashboard
           </Link>
           
           <Link
-            to={`/test/results/${sessionId}`}
+            to={`/dashboard/user`}
             className="inline-block bg-gray-100 text-gray-700 py-2 px-6 rounded hover:bg-gray-200"
           >
             View Results

@@ -72,7 +72,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       dispatch({ 
         type: 'LOGIN_FAILURE', 
-        payload: error.message || 'Login failed'
+        payload: error.error || error.message || 'Login failed'
       });
       throw error;
     }

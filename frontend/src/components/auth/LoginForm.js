@@ -27,6 +27,11 @@ const LoginForm = () => {
     setLoading(true);
     setError('');
     
+    console.log('Attempting login with:', {
+      login: formData.emailOrUsername,
+      password: formData.password.length + ' characters'
+    });
+    
     try {
       const result = await login({
         login: formData.emailOrUsername,
@@ -38,7 +43,7 @@ const LoginForm = () => {
       
     } catch (error) {
       console.error('Login error:', error);
-      setError(error.message || 'Login failed. Please try again.');
+      setError(error.error || error.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiService from '../../services/api';
+import { toast } from 'react-hot-toast';
 
 export default function SharedTest() {
   const [test, setTest] = useState(null);
@@ -16,74 +17,49 @@ export default function SharedTest() {
         setLoading(true);
         const token = localStorage.getItem('token');
         
-        // Step 1: Verify Test
-        const verifyResponse = await apiService.post(`tests/verify/${uuid}`);
-        console.log('Raw Response:', verifyResponse);
-        
-        const testData = verifyResponse;  // The response is already the data object
-        console.log('Test Data:', testData);
-
-        if (!testData || !testData.test) {
-          throw new Error('Test data not found in response');
-        }
-
-        // Set test data
-        setTest(testData.test);
-
-        // Step 2: Handle Authentication
+        // Check authentication first
         if (!token) {
           localStorage.setItem('redirectAfterLogin', window.location.pathname);
           navigate('/login');
           return;
         }
 
-        // Step 3: Check Registration Status
+        // Step 1: Verify Test
+        const verifyResponse = await apiService.post(`tests/verify/${uuid}`);
+        if (!verifyResponse?.test) {
+          throw new Error('Invalid test data received');
+        }
+
+        // Check if test is private and user doesn't have access
+        if (verifyResponse.test.visibility === 'private') {
+          const userRole = localStorage.getItem('userRole');
+          if (userRole !== 'admin' && userRole !== 'vendor') {
+            throw new Error('You do not have access to this test');
+          }
+        }
+
+        setTest(verifyResponse.test);
+
+        // Step 2: Check Registration Status
         const regResponse = await apiService.post(`tests/${uuid}/check-registration`);
-        console.log('Registration Status:', regResponse);
-        
         if (!regResponse) {
           throw new Error('Invalid registration status received');
         }
 
-        // Step 4: Set Registration Status
         setRegistrationStatus({
           canAccess: regResponse.canAccess,
           requiresRegistration: regResponse.requiresRegistration,
           isRegistered: regResponse.isRegistered,
-          message: regResponse.message
+          message: regResponse.message,
+          testType: regResponse.test?.type,
+          lastSession: regResponse.lastSession
         });
-
-        // Step 5: Auto-redirect if already registered and can access
-        if (regResponse.canAccess && 
-            (!regResponse.requiresRegistration || regResponse.isRegistered)) {
-          try {
-            // Create session
-            const sessionResponse = await apiService.post(`tests/${uuid}/session`, {
-              deviceInfo: {
-                userAgent: navigator.userAgent,
-                platform: navigator.platform,
-                screenResolution: `${window.screen.width}x${window.screen.height}`,
-                language: navigator.language
-              }
-            });
-
-            console.log('Session Response:', sessionResponse);
-
-            if (sessionResponse?.session?._id) {
-              // Redirect to test with session ID
-              navigate(`/test/take/${uuid}?session=${sessionResponse.session._id}`);
-            } else {
-              throw new Error('Invalid session response');
-            }
-          } catch (err) {
-            console.error('Session creation error:', err);
-            setError('Unable to start test session. Please try again.');
-          }
-        }
 
       } catch (err) {
         console.error('Error:', err);
-        setError(err.message || 'Error loading test');
+        const errorMessage = err.response?.data?.message || err.message || 'Error loading test';
+        setError(errorMessage);
+        toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -92,42 +68,95 @@ export default function SharedTest() {
     verifyAndCheckRegistration();
   }, [uuid, navigate]);
 
-  // Handle registration button click
+  // Update handleRegister to store test data
   const handleRegister = async () => {
     try {
       setLoading(true);
+      setError(null);
+
+      // Register for the test
       const response = await apiService.post(`tests/register/${uuid}`);
       
-      if (response?.registration) {
-        // Refresh registration status
-        const regResponse = await apiService.post(`tests/${uuid}/check-registration`);
-        setRegistrationStatus({
-          canAccess: regResponse.canAccess,
-          requiresRegistration: regResponse.requiresRegistration,
-          isRegistered: regResponse.isRegistered,
-          message: regResponse.message
-        });
-
-        // If registration successful and can access, create session and redirect
-        if (regResponse.canAccess && 
-            (!regResponse.requiresRegistration || regResponse.isRegistered)) {
-          const sessionResponse = await apiService.post(`tests/${uuid}/session`, {
-            deviceInfo: {
-              userAgent: navigator.userAgent,
-              platform: navigator.platform,
-              screenResolution: `${window.screen.width}x${window.screen.height}`,
-              language: navigator.language
-            }
-          });
-          
-          if (sessionResponse?.session?._id) {
-            navigate(`/test/take/${uuid}?session=${sessionResponse.session._id}`);
-          }
-        }
+      if (!response?.registration) {
+        throw new Error('Registration failed');
       }
-    } catch (err) {
-      console.error('Registration error:', err);
-      setError(err?.response?.data?.message || 'Unable to register for the test');
+
+      // Create a new session with initial 'active' status
+      const sessionResponse = await apiService.post(`tests/${uuid}/session`, {
+        deviceInfo: {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          screenResolution: `${window.screen.width}x${window.screen.height}`,
+          language: navigator.language
+        }
+      });
+
+      if (sessionResponse?.session?._id) {
+        // Store test data and session info with initial 'active' status
+        localStorage.setItem('currentTestData', JSON.stringify({
+          id: test.id,
+          uuid: uuid,
+          title: test.title,
+          type: test.type,
+          duration: test.duration,
+          totalMarks: test.totalMarks
+        }));
+
+        localStorage.setItem('currentTestSession', JSON.stringify({
+          sessionId: sessionResponse.session._id,
+          testId: uuid,
+          startTime: new Date().toISOString(),
+          status: 'active' // Initial status
+        }));
+
+        navigate(`/test/take/${uuid}?session=${sessionResponse.session._id}`);
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast.error(error.message || 'Failed to register for test');
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartTest = async () => {
+    try {
+      setLoading(true);
+      const sessionResponse = await apiService.post(`tests/${uuid}/session`, {
+        deviceInfo: {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          screenResolution: `${window.screen.width}x${window.screen.height}`,
+          language: navigator.language
+        }
+      });
+
+      if (sessionResponse?.session?._id) {
+        // Store test data and session info
+        localStorage.setItem('currentTestData', JSON.stringify({
+          id: test.id,
+          uuid: uuid,
+          title: test.title,
+          type: test.type,
+          duration: test.duration,
+          totalMarks: test.totalMarks
+        }));
+
+        localStorage.setItem('currentTestSession', JSON.stringify({
+          sessionId: sessionResponse.session._id,
+          testId: uuid,
+          startTime: new Date().toISOString(),
+          status: 'active'
+        }));
+
+        navigate(`/test/take/${uuid}?session=${sessionResponse.session._id}`);
+      }
+    } catch (error) {
+      console.error('Error starting test:', error);
+      toast.error('Failed to start test. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -182,27 +211,44 @@ export default function SharedTest() {
 
             {registrationStatus && (
               <div className="mt-6">
-                {registrationStatus.requiresRegistration && !registrationStatus.isRegistered && (
+                {!registrationStatus.isRegistered && registrationStatus.canAccess && (
                   <button
                     onClick={handleRegister}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+                    disabled={loading}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 disabled:bg-blue-300"
                   >
-                    Register for Test
+                    {loading ? 'Processing...' : 'Register for Test'}
                   </button>
                 )}
                 
-                {registrationStatus.canAccess && 
-                 (!registrationStatus.requiresRegistration || registrationStatus.isRegistered) && (
+                {registrationStatus.isRegistered && registrationStatus.canAccess && (
                   <button
-                    onClick={() => navigate(`/test/take/${uuid}`)}
+                    onClick={async () => {
+                      try {
+                        // Check if it's a practice test or new assessment
+                        if (test.type === 'practice' || !registrationStatus.lastSession) {
+                          await handleStartTest();
+                        } else if (registrationStatus.lastSession?.status === 'completed') {
+                          toast.error('You have already completed this assessment test');
+                        } else {
+                          // Resume existing session
+                          navigate(`/test/take/${uuid}?session=${registrationStatus.lastSession.id}`);
+                        }
+                      } catch (error) {
+                        console.error('Error starting test:', error);
+                        toast.error('Failed to start test. Please try again.');
+                      }
+                    }}
                     className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700"
                   >
-                    Start Test
+                    {test.type === 'practice' ? 'Start Practice Test' : 
+                     registrationStatus.lastSession?.status === 'completed' ? 'Test Completed' : 
+                     registrationStatus.lastSession ? 'Resume Test' : 'Start Assessment'}
                   </button>
                 )}
                 
-                {!registrationStatus.canAccess && registrationStatus.message && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
+                {!registrationStatus.canAccess && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                     <p className="text-yellow-800">
                       {registrationStatus.message}
                     </p>

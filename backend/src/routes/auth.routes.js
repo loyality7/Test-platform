@@ -1,8 +1,8 @@
 import express from "express";
-import { login, register, logout, forgotPassword, resetPassword } from "../controllers/auth.controller.js";
+import { register, logout, forgotPassword, resetPassword } from "../controllers/auth.controller.js";
 import { auth } from "../middleware/auth.js";
 import { forgotPasswordLimiter } from "../controllers/auth.controller.js";
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/user.model.js';
 
@@ -100,6 +100,7 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 /**
  * @swagger

@@ -6,6 +6,38 @@ import { Parser } from 'json2csv';
 import PDFDocument from 'pdfkit';
 import xlsx from 'xlsx';
 import Submission from "../models/submission.model.js";
+import { MCQSubmission } from "../models/mcqSubmission.model.js";
+import { CodingSubmission } from "../models/codingSubmission.model.js";
+import TestAnalytics from "../models/testAnalytics.model.js";
+
+// Add this helper function before getTestAnalytics
+const calculateAverageTestDuration = (tests) => {
+  if (!tests.length) return 0;
+  return tests.reduce((sum, test) => sum + (test.duration || 0), 0) / tests.length;
+};
+
+// Add this helper function as well since it's used in timeBasedMetrics
+const calculateCompletionTimeDistribution = (submissions) => {
+  const ranges = {
+    'under30min': 0,
+    '30to60min': 0,
+    '1to2hours': 0,
+    'over2hours': 0
+  };
+
+  submissions.forEach(sub => {
+    if (!sub.startTime || !sub.endTime) return;
+    
+    const duration = (new Date(sub.endTime) - new Date(sub.startTime)) / (1000 * 60); // in minutes
+    
+    if (duration <= 30) ranges['under30min']++;
+    else if (duration <= 60) ranges['30to60min']++;
+    else if (duration <= 120) ranges['1to2hours']++;
+    else ranges['over2hours']++;
+  });
+
+  return ranges;
+};
 
 export const getVendorDashboard = async (req, res) => {
   try {
@@ -150,26 +182,50 @@ export const getTestAnalytics = async (req, res) => {
     const tests = await Test.find({ vendor: req.user._id });
     const submissions = await Submission.find({ 
       test: { $in: tests.map(t => t._id) } 
-    });
+    }).populate('user').populate('test');
 
+    // Enhanced analytics object
     const analytics = {
-      totalTests: tests.length,
-      totalCandidates: new Set(submissions.map(s => s.user.toString())).size,
-      averageScore: submissions.length ? 
-        submissions.reduce((sum, s) => sum + s.totalScore, 0) / submissions.length : 0,
-      testCompletion: submissions.length ? 
-        (submissions.filter(s => s.status === 'completed').length / submissions.length) * 100 : 0,
-      testsByDifficulty: {
-        easy: tests.filter(t => t.difficulty === 'easy').length,
-        medium: tests.filter(t => t.difficulty === 'medium').length,
-        hard: tests.filter(t => t.difficulty === 'hard').length
+      testMetrics: {
+        totalTests: tests.length,
+        activeTests: tests.filter(t => t.status === 'published').length,
+        draftTests: tests.filter(t => t.status === 'draft').length,
+        archivedTests: tests.filter(t => t.status === 'archived').length,
+        testsByDifficulty: {
+          easy: tests.filter(t => t.difficulty === 'easy').length,
+          medium: tests.filter(t => t.difficulty === 'medium').length,
+          hard: tests.filter(t => t.difficulty === 'hard').length
+        },
+        testsByCategory: tests.reduce((acc, test) => {
+          acc[test.category] = (acc[test.category] || 0) + 1;
+          return acc;
+        }, {})
       },
-      submissionStats: {
+
+      submissionMetrics: {
         total: submissions.length,
         completed: submissions.filter(s => s.status === 'completed').length,
         inProgress: submissions.filter(s => s.status === 'in_progress').length,
         mcqCompleted: submissions.filter(s => s.status === 'mcq_completed').length,
-        codingCompleted: submissions.filter(s => s.status === 'coding_completed').length
+        codingCompleted: submissions.filter(s => s.status === 'coding_completed').length,
+        averageCompletionTime: calculateAverageCompletionTime(submissions),
+        submissionsByTest: calculateSubmissionsByTest(submissions)
+      },
+
+      performanceMetrics: {
+        totalCandidates: new Set(submissions.map(s => s.user._id.toString())).size,
+        averageScore: calculateAverageScore(submissions),
+        highestScore: Math.max(...submissions.map(s => s.totalScore || 0), 0),
+        lowestScore: Math.min(...submissions.filter(s => s.totalScore).map(s => s.totalScore), 100),
+        passRate: calculatePassRate(submissions),
+        scoreDistribution: calculateScoreDistribution(submissions)
+      },
+
+      timeBasedMetrics: {
+        dailySubmissions: calculateDailySubmissions(submissions),
+        peakSubmissionHours: calculatePeakHours(submissions),
+        averageTestDuration: calculateAverageTestDuration(tests),
+        completionTimeDistribution: calculateCompletionTimeDistribution(submissions)
       }
     };
 
@@ -177,6 +233,70 @@ export const getTestAnalytics = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+};
+
+// Helper functions
+const calculateAverageCompletionTime = (submissions) => {
+  const completedSubs = submissions.filter(s => s.endTime && s.startTime);
+  if (!completedSubs.length) return 0;
+  const totalTime = completedSubs.reduce((sum, sub) => 
+    sum + (new Date(sub.endTime) - new Date(sub.startTime)), 0);
+  return Math.round(totalTime / completedSubs.length / 1000 / 60); // in minutes
+};
+
+const calculateSubmissionsByTest = (submissions) => {
+  return submissions.reduce((acc, sub) => {
+    const testId = sub.test._id.toString();
+    if (!acc[testId]) {
+      acc[testId] = {
+        testTitle: sub.test.title,
+        total: 0,
+        completed: 0,
+        averageScore: 0
+      };
+    }
+    acc[testId].total++;
+    if (sub.status === 'completed') {
+      acc[testId].completed++;
+      acc[testId].averageScore = (acc[testId].averageScore * (acc[testId].completed - 1) + 
+        (sub.totalScore || 0)) / acc[testId].completed;
+    }
+    return acc;
+  }, {});
+};
+
+const calculateScoreDistribution = (submissions) => {
+  const ranges = {
+    '0-20': 0, '21-40': 0, '41-60': 0, '61-80': 0, '81-100': 0
+  };
+  submissions.forEach(sub => {
+    if (sub.totalScore) {
+      const score = sub.totalScore;
+      if (score <= 20) ranges['0-20']++;
+      else if (score <= 40) ranges['21-40']++;
+      else if (score <= 60) ranges['41-60']++;
+      else if (score <= 80) ranges['61-80']++;
+      else ranges['81-100']++;
+    }
+  });
+  return ranges;
+};
+
+const calculateDailySubmissions = (submissions) => {
+  return submissions.reduce((acc, sub) => {
+    const date = new Date(sub.createdAt).toISOString().split('T')[0];
+    acc[date] = (acc[date] || 0) + 1;
+    return acc;
+  }, {});
+};
+
+const calculatePeakHours = (submissions) => {
+  const hourCounts = new Array(24).fill(0);
+  submissions.forEach(sub => {
+    const hour = new Date(sub.createdAt).getHours();
+    hourCounts[hour]++;
+  });
+  return hourCounts;
 };
 
 export const getTestResults = async (req, res) => {
@@ -716,6 +836,273 @@ export const getUserSubmissions = async (req, res) => {
 
     res.json(userSubmissions);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getUserTestAnalytics = async (req, res) => {
+  try {
+    const { testId, userId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    // Get submission details
+    const submission = await Submission.findOne({ 
+      test: testId,
+      user: userId 
+    })
+    .populate('user', 'name email')
+    .populate('test', 'title duration passingMarks');
+
+    if (!submission) {
+      return res.status(404).json({ error: "No submission found for this user" });
+    }
+
+    // Get MCQ analytics
+    const mcqAnalytics = await TestAnalytics.find({
+      test: testId,
+      user: userId,
+      type: 'mcq'
+    }).sort('questionId');
+
+    // Get coding analytics
+    const codingAnalytics = await TestAnalytics.find({
+      test: testId,
+      user: userId,
+      type: 'coding'
+    }).sort('challengeId');
+
+    const analytics = {
+      overview: {
+        candidateName: submission.user.name,
+        candidateEmail: submission.user.email,
+        testTitle: submission.test.title,
+        status: submission.status,
+        startTime: submission.startTime,
+        endTime: submission.endTime,
+        duration: submission.endTime ? 
+          (new Date(submission.endTime) - new Date(submission.startTime)) / 1000 : null,
+        totalScore: submission.totalScore,
+        passingMarks: submission.test.passingMarks,
+        result: submission.totalScore >= submission.test.passingMarks ? 'PASS' : 'FAIL'
+      },
+
+      mcqPerformance: {
+        score: submission.mcqSubmission?.totalScore || 0,
+        questionsAttempted: mcqAnalytics.length,
+        details: mcqAnalytics.map(q => ({
+          questionId: q.questionId,
+          timeSpent: q.behavior.timeSpent,
+          warnings: q.behavior.warnings,
+          tabSwitches: q.behavior.tabSwitches,
+          focusLostCount: q.behavior.focusLostCount,
+          score: q.performance.score,
+          browserEvents: q.behavior.browserEvents
+        }))
+      },
+
+      codingPerformance: {
+        score: submission.codingSubmission?.totalScore || 0,
+        challengesAttempted: codingAnalytics.length,
+        details: codingAnalytics.map(c => ({
+          challengeId: c.challengeId,
+          timeSpent: c.behavior.timeSpent,
+          executionTime: c.performance.executionTime,
+          memoryUsage: c.performance.memoryUsage,
+          testCasesPassed: c.performance.testCasesPassed,
+          totalTestCases: c.performance.totalTestCases,
+          score: c.performance.score,
+          submissionAttempts: c.behavior.submissionAttempts,
+          errorCount: c.behavior.errorCount,
+          hintViews: c.behavior.hintViews
+        }))
+      },
+
+      behaviorMetrics: {
+        totalWarnings: [...mcqAnalytics, ...codingAnalytics].reduce(
+          (sum, a) => sum + (a.behavior.warnings || 0), 0
+        ),
+        totalTabSwitches: [...mcqAnalytics, ...codingAnalytics].reduce(
+          (sum, a) => sum + (a.behavior.tabSwitches || 0), 0
+        ),
+        totalCopyPasteAttempts: [...mcqAnalytics, ...codingAnalytics].reduce(
+          (sum, a) => sum + (a.behavior.copyPasteAttempts || 0), 0
+        ),
+        focusLostEvents: [...mcqAnalytics, ...codingAnalytics].reduce(
+          (sum, a) => sum + (a.behavior.focusLostCount || 0), 0
+        )
+      },
+
+      systemInfo: mcqAnalytics[0]?.metadata || codingAnalytics[0]?.metadata || {}
+    };
+
+    res.json(analytics);
+
+  } catch (error) {
+    console.error('Error in getUserTestAnalytics:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Helper functions for analytics
+const calculateAverageTime = (analytics, type) => {
+  const relevantAnalytics = analytics.filter(a => a.type === type);
+  if (!relevantAnalytics.length) return 0;
+  return relevantAnalytics.reduce((acc, a) => 
+    acc + (a.behavior.timeSpent || 0), 0) / relevantAnalytics.length;
+};
+
+const sumMetric = (analytics, metricPath) => {
+  return analytics.reduce((acc, a) => {
+    const value = metricPath.split('.').reduce((obj, key) => obj?.[key], a);
+    return acc + (value || 0);
+  }, 0);
+};
+
+// Get all MCQ submissions for a user's test
+export const getUserMCQSubmissions = async (req, res) => {
+  try {
+    const { testId, userId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    const mcqSubmissions = await TestAnalytics.find({
+      test: testId,
+      user: userId,
+      type: 'mcq'
+    })
+    .sort('questionId')
+    .select('-__v');
+
+    res.json(mcqSubmissions);
+
+  } catch (error) {
+    console.error('Error in getUserMCQSubmissions:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get specific MCQ submission
+export const getSpecificMCQSubmission = async (req, res) => {
+  try {
+    const { testId, userId, mcqId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    const mcqSubmission = await TestAnalytics.findOne({
+      test: testId,
+      user: userId,
+      type: 'mcq',
+      questionId: mcqId
+    }).select('-__v');
+
+    if (!mcqSubmission) {
+      return res.status(404).json({ error: "MCQ submission not found" });
+    }
+
+    res.json(mcqSubmission);
+
+  } catch (error) {
+    console.error('Error in getSpecificMCQSubmission:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get all coding submissions for a user's test
+export const getUserCodingSubmissions = async (req, res) => {
+  try {
+    const { testId, userId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    const codingSubmissions = await TestAnalytics.find({
+      test: testId,
+      user: userId,
+      type: 'coding'
+    })
+    .sort('challengeId')
+    .select('-__v');
+
+    res.json(codingSubmissions);
+
+  } catch (error) {
+    console.error('Error in getUserCodingSubmissions:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get specific coding submission
+export const getSpecificCodingSubmission = async (req, res) => {
+  try {
+    const { testId, userId, challengeId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    const codingSubmission = await TestAnalytics.findOne({
+      test: testId,
+      user: userId,
+      type: 'coding',
+      challengeId: challengeId
+    }).select('-__v');
+
+    if (!codingSubmission) {
+      return res.status(404).json({ error: "Coding submission not found" });
+    }
+
+    res.json(codingSubmission);
+
+  } catch (error) {
+    console.error('Error in getSpecificCodingSubmission:', error);
     res.status(500).json({ error: error.message });
   }
 }; 

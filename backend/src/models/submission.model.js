@@ -16,8 +16,13 @@ const submissionSchema = new mongoose.Schema({
     enum: ['in_progress', 'mcq_completed', 'coding_completed', 'completed'],
     default: 'in_progress'
   },
+  version: { 
+    type: Number, 
+    default: 1 
+  },
   // MCQ Section
   mcqSubmission: {
+    version: { type: Number, default: 1 },
     completed: { type: Boolean, default: false },
     submittedAt: Date,
     totalScore: { type: Number, default: 0 },
@@ -34,6 +39,7 @@ const submissionSchema = new mongoose.Schema({
   },
   // Coding Section
   codingSubmission: {
+    version: { type: Number, default: 1 },
     completed: { type: Boolean, default: false },
     submittedAt: Date,
     totalScore: { type: Number, default: 0 },
@@ -81,5 +87,26 @@ const submissionSchema = new mongoose.Schema({
 // Indexes for better query performance
 submissionSchema.index({ user: 1, test: 1 });
 submissionSchema.index({ test: 1, status: 1 });
+
+// Make sure this method works correctly
+submissionSchema.statics.getNextVersion = async function(testId, userId) {
+  const lastSubmission = await this.findOne({ 
+    test: testId, 
+    user: userId 
+  })
+  .sort({ version: -1 })
+  .select('version');
+  
+  return lastSubmission ? (lastSubmission.version + 1) : 1;
+};
+
+// Add a new method to check if a submission exists
+submissionSchema.statics.findExistingSubmission = async function(testId, userId) {
+  return await this.findOne({ 
+    test: testId, 
+    user: userId,
+    status: { $ne: 'completed' }  // Only find incomplete submissions
+  });
+};
 
 export default mongoose.model("Submission", submissionSchema);

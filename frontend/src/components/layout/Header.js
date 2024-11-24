@@ -8,6 +8,19 @@ const Header = () => {
   const [isExploreOpen, setIsExploreOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const getDashboardLink = () => {
+    if (!user) return null;
+    
+    switch (user.role) {
+      case 'admin':
+        return '/dashboard/admin';
+      case 'vendor':
+        return '/dashboard/vendor';
+      default:
+        return '/dashboard/user';
+    }
+  };
+
   return (
     <header className="bg-white shadow-md fixed w-full top-0 z-50">
       <nav className="container mx-auto px-4 py-3">
@@ -22,6 +35,9 @@ const Header = () => {
           </Link>
 
           <div className="hidden md:flex items-center space-x-6">
+            {user && (
+              <Link to={getDashboardLink()} className="hover:text-blue-600">Dashboard</Link>
+            )}
             <div className="relative">
               <button 
                 className="flex items-center space-x-1 hover:text-blue-600"
@@ -42,7 +58,6 @@ const Header = () => {
               )}
             </div>
             <Link to="/directory" className="hover:text-blue-600">Directory</Link>
-            <Link to="/resources" className="hover:text-blue-600">Resources</Link>
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
@@ -83,11 +98,13 @@ const Header = () => {
 
         {isMobileMenuOpen && (
           <div className="md:hidden pt-4 pb-3 border-t border-gray-200">
+            {user && (
+              <Link to={getDashboardLink()} className="block px-4 py-2 hover:bg-gray-100">Dashboard</Link>
+            )}
             <Link to="/mcq-tests" className="block px-4 py-2 hover:bg-gray-100">MCQ Tests</Link>
             <Link to="/coding-challenges" className="block px-4 py-2 hover:bg-gray-100">Coding Challenges</Link>
             <Link to="/practice-tests" className="block px-4 py-2 hover:bg-gray-100">Practice Tests</Link>
             <Link to="/directory" className="block px-4 py-2 hover:bg-gray-100">Directory</Link>
-            <Link to="/resources" className="block px-4 py-2 hover:bg-gray-100">Resources</Link>
             
             <div className="mt-4 pt-4 border-t border-gray-200">
               {user ? (

@@ -29,139 +29,65 @@ const validateTestAccess = async (testId, userId, userRole) => {
   return { valid: false, message: 'Not authorized to access this test' };
 };
 
+// Add this helper function to calculate marks
+const calculateMarks = (testCaseResults) => {
+  if (!testCaseResults || testCaseResults.length === 0) return 0;
+  
+  const passedTests = testCaseResults.filter(tc => tc.passed).length;
+  const totalTests = testCaseResults.length;
+  
+  // Each test case is worth equal points
+  const marksPerTest = 100 / totalTests;
+  return Math.round(passedTests * marksPerTest);
+};
+
 // Submit MCQ answer
 export const submitMCQ = async (req, res) => {
   try {
     const { testId, submissions } = req.body;
+    const userId = req.user._id;
+
+    // Get or create submission with proper version
+    let submission = await Submission.findExistingSubmission(testId, userId);
     
-    // First find the test using Test model
-    const test = await Test.findById(testId);
-    let testData = test;
-
-    if (!test) {
-      // Try finding by UUID if ID lookup fails
-      const testByUuid = await Test.findOne({ uuid: testId });
-      if (!testByUuid) {
-        return res.status(404).json({ 
-          error: "Test not found",
-          requiresRegistration: false 
-        });
-      }
-      testData = testByUuid;
-    }
-
-    // Check test registration with expanded status check
-    const registration = await TestRegistration.findOne({
-      test: testData._id,
-      user: req.user._id,
-      status: { $in: ['registered', 'started'] }
-    });
-
-    // Enhanced registration check with detailed response
-    if (!registration) {
-      // Check if user has any registration for this test
-      const anyRegistration = await TestRegistration.findOne({
-        test: testData._id,
-        user: req.user._id
-      });
-
-      if (anyRegistration) {
-        // Registration exists but with invalid status
-        return res.status(403).json({
-          error: `Test registration status is ${anyRegistration.status}`,
-          requiresRegistration: false,
-          registrationStatus: anyRegistration.status
-        });
-      }
-
-      // No registration found at all
-      return res.status(403).json({
-        error: "Not registered for test",
-        requiresRegistration: true,
-        testId: testData._id,
-        uuid: testData.uuid
-      });
-    }
-
-    // Update registration status if needed
-    if (registration.status === 'registered') {
-      registration.status = 'started';
-      registration.startTime = new Date();
-      await registration.save();
-    }
-
-    // Process submissions
-    let totalMarksObtained = 0;
-    let correctAnswers = 0;
-
-    // Find or create submission document
-    let submission = await Submission.findOne({
-      user: req.user._id,
-      test: testData._id
-    });
-
     if (!submission) {
+      // If no existing submission, create new one with next version
+      const nextVersion = await Submission.getNextVersion(testId, userId);
       submission = new Submission({
-        user: req.user._id,
-        test: testData._id,
+        user: userId,
+        test: testId,
+        version: nextVersion,
         status: 'in_progress',
-        startTime: registration.startTime,
         mcqSubmission: {
-          answers: [],
-          completed: false
+          version: nextVersion,
+          completed: false,
+          answers: []
         }
       });
     }
 
-    // Process each submission
-    for (const { questionId, selectedOptions, timeTaken } of submissions) {
-      const mcq = testData.mcqs.find(m => m._id.toString() === questionId);
-      if (!mcq) continue;
-
-      const isCorrect = arraysEqual(
-        selectedOptions.sort(),
-        mcq.correctOptions.sort()
-      );
-      const marksObtained = isCorrect ? mcq.marks : 0;
-
-      totalMarksObtained += marksObtained;
-      if (isCorrect) correctAnswers++;
-
-      submission.mcqSubmission.answers.push({
-        questionId,
-        selectedOptions,
-        marks: marksObtained,
-        isCorrect,
-        timeTaken: timeTaken || 0
-      });
-    }
-
-    // Update submission
+    // Update MCQ submission
+    submission.mcqSubmission.answers = submissions.map(sub => ({
+      questionId: sub.questionId,
+      selectedOptions: sub.selectedOptions,
+      // ... other fields
+    }));
+    
     submission.mcqSubmission.completed = true;
-    submission.mcqSubmission.totalScore = totalMarksObtained;
     submission.mcqSubmission.submittedAt = new Date();
     submission.status = 'mcq_completed';
 
     await submission.save();
 
     res.status(201).json({
+      message: 'MCQ submission successful',
       submissionId: submission._id,
-      submission: {
-        mcqSubmission: submission.mcqSubmission,
-        totalScore: totalMarksObtained,
-        correctAnswers,
-        totalQuestions: submissions.length
-      },
-      message: "MCQ submissions saved successfully"
+      version: submission.version
     });
 
   } catch (error) {
-    console.error('MCQ Submission Error:', error);
-    res.status(500).json({ 
-      error: "Failed to submit MCQs",
-      message: error.message,
-      requiresRegistration: false
-    });
+    console.error('Error in submitMCQ:', error);
+    res.status(500).json({ error: 'Failed to submit MCQ answers' });
   }
 };
 
@@ -201,13 +127,14 @@ export const submitCoding = async (req, res) => {
         code: sub.code,
         language: sub.language,
         submittedAt: new Date(),
-        marks: sub.testCaseResults.every(tc => tc.passed) ? sub.marks : 0,
-        status: sub.testCaseResults.every(tc => tc.passed) ? 'passed' : 'failed',
         testCaseResults: sub.testCaseResults,
         executionTime: sub.executionTime,
         memory: sub.memory,
         output: sub.output,
-        error: sub.error
+        error: sub.error,
+        // Server-side computed fields
+        status: sub.testCaseResults.every(tc => tc.passed) ? 'passed' : 'partial',
+        marks: calculateMarks(sub.testCaseResults)
       };
 
       if (challengeIndex === -1) {
@@ -229,7 +156,7 @@ export const submitCoding = async (req, res) => {
     // Update submission status and total score
     submission.codingSubmission.completed = true;
     submission.codingSubmission.submittedAt = new Date();
-    
+
     // Update total score (MCQ + Coding)
     submission.totalScore = (submission.mcqSubmission?.totalScore || 0) + submission.codingSubmission.totalScore;
 
@@ -240,48 +167,17 @@ export const submitCoding = async (req, res) => {
     }
 
     await submission.save();
-
-    // Calculate submission stats
-    const submissionStats = {
-      totalChallenges: submissions.length,
-      submittedChallenges: submissions.length,
-      completionPercentage: (submissions.length / submissions.length) * 100,
-      totalScore: submission.totalScore,
-      codingScore: submission.codingSubmission.totalScore,
-      mcqScore: submission.mcqSubmission?.totalScore || 0
-    };
-
-    // Calculate overall metrics
-    const overallMetrics = {
-      totalTestCases: submissions.reduce((sum, s) => sum + s.testCaseResults.length, 0),
-      totalPassedTestCases: submissions.reduce((sum, s) => sum + s.testCaseResults.filter(tc => tc.passed).length, 0),
-      totalFailedTestCases: submissions.reduce((sum, s) => sum + s.testCaseResults.filter(tc => !tc.passed).length, 0),
-      totalExecutionTime: submissions.reduce((sum, s) => sum + (s.executionTime || 0), 0),
-      totalMemoryUsed: submissions.reduce((sum, s) => sum + (s.memory || 0), 0),
-      averageExecutionTime: submissions.reduce((sum, s) => sum + (s.executionTime || 0), 0) / submissions.length,
-      averageMemoryUsed: submissions.reduce((sum, s) => sum + (s.memory || 0), 0) / submissions.length,
-      totalChallenges: submissions.length,
-      passedChallenges: submissions.filter(s => s.testCaseResults.every(tc => tc.passed)).length,
-      partiallySolvedChallenges: submissions.filter(s => s.testCaseResults.some(tc => tc.passed) && s.testCaseResults.some(tc => !tc.passed)).length,
-      failedChallenges: submissions.filter(s => s.testCaseResults.every(tc => !tc.passed)).length,
-      maxPossibleScore: submissions.reduce((sum, s) => sum + (s.marks || 0), 0),
-      successRate: (submissions.filter(s => s.testCaseResults.every(tc => tc.passed)).length / submissions.length) * 100,
-      challengeSuccessRate: (submissions.reduce((sum, s) => sum + s.testCaseResults.filter(tc => tc.passed).length, 0) / 
-        submissions.reduce((sum, s) => sum + s.testCaseResults.length, 0)) * 100
-    };
-
     res.status(201).json({
       submissionId: submission._id,
-      submission: {
-        ...submission.toObject(),
-        submissionStats,
-        overallMetrics
-      },
-      message: "Coding submissions saved successfully"
+      submission,
+      message: "Coding submissions created successfully"
     });
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error in submitCoding:', error);
+    res.status(500).json({ 
+      error: error.message || 'Error submitting coding answers' 
+    });
   }
 };
 
@@ -357,26 +253,49 @@ export const getUserSubmissions = async (req, res) => {
   try {
     const userId = req.params.userId;
 
-    // Verify user has permission to access these submissions
-    if (req.user.role !== 'admin' && req.user._id.toString() !== userId) {
+    // Authorization check:
+    // 1. Admin can see all submissions
+    // 2. Users can see their own submissions
+    // 3. Vendors can see submissions for their tests
+    const isAdmin = req.user.role === 'admin';
+    const isOwnSubmissions = req.user._id.toString() === userId;
+    const isVendor = req.user.role === 'vendor';
+
+    if (!isAdmin && !isOwnSubmissions && !isVendor) {
       return res.status(403).json({ error: 'Not authorized to access these submissions' });
     }
 
-    // Get all submissions for the user using the Submission model
-    const submissions = await Submission.find({ user: userId })
+    // Base query
+    let query = { user: userId };
+
+    // If vendor, only show submissions for their tests
+    if (isVendor && !isAdmin && !isOwnSubmissions) {
+      const vendorTests = await Test.find({ vendor: req.user._id }).select('_id');
+      const testIds = vendorTests.map(test => test._id);
+      query.test = { $in: testIds };
+    }
+
+    // Get submissions with the applied query
+    const submissions = await Submission.find(query)
       .populate({
         path: 'test',
-        select: 'title type category difficulty totalMarks passingMarks'
+        select: 'title type category difficulty totalMarks passingMarks vendor',
+        populate: {
+          path: 'vendor',
+          select: 'name email'
+        }
       })
       .sort({ submittedAt: -1 })
       .lean();
 
-    // Add debug logging
-    console.log('Found submissions:', submissions);
+    // Additional vendor check on the results
+    const filteredSubmissions = isVendor ? 
+      submissions.filter(sub => sub.test?.vendor?._id.toString() === req.user._id.toString()) :
+      submissions;
 
     // Transform the response
     const transformedSubmissions = {
-      mcq: submissions
+      mcq: filteredSubmissions
         .filter(sub => sub.mcqSubmission?.answers?.length > 0)
         .map(sub => ({
           testId: sub.test?._id,
@@ -389,9 +308,14 @@ export const getUserSubmissions = async (req, res) => {
           passingMarks: sub.test?.passingMarks,
           status: sub.status,
           submittedAt: sub.mcqSubmission?.submittedAt,
-          answers: sub.mcqSubmission?.answers
+          answers: sub.mcqSubmission?.answers,
+          vendor: {
+            id: sub.test?.vendor?._id,
+            name: sub.test?.vendor?.name,
+            email: sub.test?.vendor?.email
+          }
         })),
-      coding: submissions
+      coding: filteredSubmissions
         .filter(sub => sub.codingSubmission?.challenges?.length > 0)
         .map(sub => ({
           testId: sub.test?._id,
@@ -404,17 +328,29 @@ export const getUserSubmissions = async (req, res) => {
           passingMarks: sub.test?.passingMarks,
           status: sub.status,
           submittedAt: sub.codingSubmission?.submittedAt,
-          solutions: sub.codingSubmission?.challenges
+          solutions: sub.codingSubmission?.challenges,
+          vendor: {
+            id: sub.test?.vendor?._id,
+            name: sub.test?.vendor?.name,
+            email: sub.test?.vendor?.email
+          }
         }))
     };
 
-    // Add debug logging
-    console.log('Transformed submissions:', transformedSubmissions);
+    res.json({
+      success: true,
+      data: transformedSubmissions,
+      meta: {
+        totalSubmissions: filteredSubmissions.length,
+        mcqCount: transformedSubmissions.mcq.length,
+        codingCount: transformedSubmissions.coding.length
+      }
+    });
 
-    res.json(transformedSubmissions);
   } catch (error) {
     console.error('Error in getUserSubmissions:', error);
     res.status(500).json({ 
+      success: false,
       error: 'Failed to fetch submissions',
       message: error.message 
     });
@@ -580,5 +516,50 @@ export const getTestResults = async (req, res) => {
     res.status(200).json(results);
   } catch (error) {
     res.status(500).json({ message: 'Error retrieving test results', error: error.message });
+  }
+};
+
+// Add new route handler for getting submission attempts
+export const getSubmissionAttempts = async (req, res) => {
+  try {
+    const { testId, userId } = req.params;
+
+    // Verify access rights
+    if (req.user.role !== 'admin' && req.user._id.toString() !== userId) {
+      return res.status(403).json({ error: 'Not authorized to access these submissions' });
+    }
+
+    const submissions = await Submission.find({
+      test: testId,
+      user: userId
+    })
+    .sort({ version: 1 })
+    .select('version mcqSubmission.totalScore codingSubmission.totalScore totalScore status startTime endTime')
+    .lean();
+
+    const attempts = submissions.map(sub => ({
+      version: sub.version,
+      status: sub.status,
+      mcqScore: sub.mcqSubmission?.totalScore || 0,
+      codingScore: sub.codingSubmission?.totalScore || 0,
+      totalScore: sub.totalScore,
+      startTime: sub.startTime,
+      endTime: sub.endTime,
+      duration: sub.endTime ? Math.round((sub.endTime - sub.startTime) / 1000) : null // duration in seconds
+    }));
+
+    res.json({
+      totalAttempts: attempts.length,
+      attempts,
+      bestScore: Math.max(...attempts.map(a => a.totalScore)),
+      averageScore: Math.round(attempts.reduce((sum, a) => sum + a.totalScore, 0) / attempts.length)
+    });
+
+  } catch (error) {
+    console.error('Error in getSubmissionAttempts:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch submission attempts',
+      message: error.message 
+    });
   }
 }; 

@@ -126,6 +126,15 @@ const testSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     }],
+    allowedEmails: [{
+      type: String,
+      validate: {
+        validator: function(email) {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        },
+        message: props => `${props.value} is not a valid email address!`
+      }
+    }],
     currentUserCount: {
       type: Number,
       default: 0

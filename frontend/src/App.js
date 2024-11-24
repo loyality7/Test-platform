@@ -24,6 +24,7 @@ import SharedTest from './pages/test/SharedTest';
 import TakeTest from './pages/test/TakeTest';
 import TestCompleted from './pages/test/TestCompleted';
 import Proctoring from './pages/test/Proctoring';
+import TestSubmissions from './pages/vendor/TestSubmissions';
 const queryClient = new QueryClient();
 
 // Create a wrapper component to handle header visibility
@@ -33,7 +34,7 @@ const AppContent = () => {
   // Define routes where header should be hidden
   const noHeaderRoutes = [
     '/test/take',
-    '/test/shared',
+    // '/test/shared',
     '/test/completed',
     '/test/proctoring'
   ];
@@ -136,6 +137,15 @@ const AppContent = () => {
             element={
               <ProtectedRoute 
                 element={<VendorReports />} 
+                allowedRoles={['vendor', 'admin']} 
+              />
+            } 
+          />
+          <Route 
+            path="/vendor/analytics/submissions/:testId" 
+            element={
+              <ProtectedRoute 
+                element={<TestSubmissions />} 
                 allowedRoles={['vendor', 'admin']} 
               />
             } 

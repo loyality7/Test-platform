@@ -954,7 +954,7 @@ export const startTestSession = async (req, res) => {
       return res.status(404).json({ message: 'Test not found' });
     }
 
-    // Check for existing active session
+    // Check for existing session
     const existingSession = await TestSession.findOne({
       test: test._id,
       user: req.user._id,
@@ -962,24 +962,43 @@ export const startTestSession = async (req, res) => {
     });
 
     if (existingSession) {
+      // Calculate if existing session has expired
+      const timeElapsed = Date.now() - existingSession.startTime;
+      const timeLimit = test.timeLimit * 60 * 1000; // Convert minutes to milliseconds
+
+      if (timeElapsed > timeLimit) {
+        // Update session to completed if expired
+        existingSession.status = 'completed';
+        existingSession.endTime = new Date(existingSession.startTime.getTime() + timeLimit);
+        await existingSession.save();
+
+        return res.status(400).json({
+          message: 'Previous session has expired',
+          session: {
+            status: 'completed',
+            reason: 'timeout'
+          }
+        });
+      }
+
       return res.status(200).json({
         message: 'Existing session found',
         session: existingSession
       });
     }
 
-    // Create new session
+    // Create new session with duration from test
     const session = await TestSession.create({
       test: test._id,
       user: req.user._id,
       startTime: new Date(),
-      duration: test.duration,
+      duration: test.timeLimit, // Set duration from test timeLimit
       status: 'active',
       deviceInfo: {
-        userAgent: deviceInfo.userAgent,
-        platform: deviceInfo.platform,
-        screenResolution: deviceInfo.screenResolution,
-        language: deviceInfo.language,
+        userAgent: deviceInfo?.userAgent,
+        platform: deviceInfo?.platform,
+        screenResolution: deviceInfo?.screenResolution,
+        language: deviceInfo?.language,
         ip: req.ip
       }
     });
@@ -990,7 +1009,8 @@ export const startTestSession = async (req, res) => {
         _id: session._id,
         startTime: session.startTime,
         duration: session.duration,
-        status: session.status
+        status: session.status,
+        timeLimit: test.timeLimit * 60 * 1000 // Send timeLimit in milliseconds
       }
     });
 
@@ -1244,7 +1264,6 @@ export const verifyTestByUuid = async (req, res) => {
 export const checkTestRegistration = async (req, res) => {
   try {
     const { uuid } = req.params;
-    
     const test = await Test.findOne({ uuid })
       .populate('vendor', 'name email');
     
@@ -1256,54 +1275,81 @@ export const checkTestRegistration = async (req, res) => {
       });
     }
 
-    // Check access based on test type
-    if (test.type === 'practice') {
-      // Practice tests require registration
-      const existingRegistration = await TestRegistration.findOne({
-        test: test._id,
-        user: req.user._id
-      });
+    // Check existing registration
+    const existingRegistration = await TestRegistration.findOne({
+      test: test._id,
+      user: req.user._id
+    });
 
+    // Get last completed session for assessment tests
+    let lastSession = null;
+    if (test.type === 'assessment') {
+      lastSession = await TestSession.findOne({
+        test: test._id,
+        user: req.user._id,
+        status: 'completed'
+      }).sort({ endTime: -1 });
+    }
+
+    // First check if user is admin or vendor
+    const isAdmin = req.user.role === 'admin';
+    const isVendor = test.vendor.toString() === req.user._id.toString();
+
+    if (isAdmin || isVendor) {
       return res.json({
         canAccess: true,
-        requiresRegistration: true,
+        requiresRegistration: !existingRegistration,
         isRegistered: !!existingRegistration,
+        lastSession: lastSession,
+        message: 'You have administrative access to this test',
         test: {
           id: test._id,
           uuid: test.uuid,
           title: test.title,
-          type: 'practice'
-        }
-      });
-    } 
-    else if (test.accessControl.type === 'public') {
-      // Public tests don't need registration
-      return res.json({
-        canAccess: true,
-        requiresRegistration: false,
-        test: {
-          id: test._id,
-          uuid: test.uuid,
-          title: test.title,
-          type: 'public'
+          type: test.type
         }
       });
     }
-    else {
-      // Assessment tests - check if user is allowed
-      const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
+
+    // Check visibility and access type
+    const isPublic = test.accessControl.type === 'public';
+    const isPractice = test.type === 'practice';
+    const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
+
+    // Determine if user can access based on visibility and type
+    const canAccess = isPublic || isPractice || isAllowed;
+
+    if (!canAccess) {
       return res.json({
-        canAccess: isAllowed,
+        canAccess: false,
         requiresRegistration: false,
-        message: isAllowed ? 'You are authorized to take this test' : 'This test requires vendor approval',
+        isRegistered: !!existingRegistration,
+        message: 'You do not have access to this test',
         test: {
           id: test._id,
           uuid: test.uuid,
           title: test.title,
-          type: 'assessment'
+          type: test.type
         }
       });
     }
+
+    // User has access - return appropriate response
+    return res.json({
+      canAccess: true,
+      requiresRegistration: !existingRegistration,
+      isRegistered: !!existingRegistration,
+      lastSession: lastSession,
+      message: lastSession && test.type === 'assessment' ? 
+        'You have already completed this assessment' : 
+        'You can take this test',
+      test: {
+        id: test._id,
+        uuid: test.uuid,
+        title: test.title,
+        type: test.type
+      }
+    });
 
   } catch (error) {
     console.error('Error in checkTestRegistration:', error);
@@ -1810,9 +1856,30 @@ export const updateSessionStatus = async (req, res) => {
       return res.status(403).json({ error: "Not authorized to update this session" });
     }
 
+    // Validate status transition based on current status
+    const validTransitions = {
+      'active': ['in_progress', 'terminated'],
+      'in_progress': ['completed', 'terminated'],
+      'completed': [], // No transitions allowed from completed
+      'terminated': [] // No transitions allowed from terminated
+    };
+
+    if (status && (!validTransitions[session.status] || !validTransitions[session.status].includes(status))) {
+      return res.status(400).json({ 
+        error: "Invalid status transition",
+        currentStatus: session.status,
+        allowedTransitions: validTransitions[session.status]
+      });
+    }
+
     // Update session fields
     if (status) {
       session.status = status;
+      
+      // Set end time only for completed or terminated status
+      if (['completed', 'terminated'].includes(status)) {
+        session.endTime = new Date();
+      }
     }
 
     if (typeof browserSwitches === 'number') {
@@ -1830,11 +1897,6 @@ export const updateSessionStatus = async (req, res) => {
         timestamp: new Date(),
         addedBy: req.user._id
       });
-    }
-
-    // If status is 'completed', set end time
-    if (status === 'completed' && !session.endTime) {
-      session.endTime = new Date();
     }
 
     await session.save();
@@ -2083,88 +2145,53 @@ export const getPublicTestCategories = async (req, res) => {
 export const registerForTest = async (req, res) => {
   try {
     const { uuid } = req.params;
-    
-    // Find test by UUID
     const test = await Test.findOne({ uuid });
+
     if (!test) {
       return res.status(404).json({ message: 'Test not found' });
     }
 
-    // Get or create session
-    let session = await TestSession.findOne({
-      test: test._id,
-      user: req.user._id,
-      status: { $in: ['started', 'in_progress'] }
-    });
+    // Check if user is admin or vendor
+    const isAdmin = req.user.role === 'admin';
+    const isVendor = test.vendor.toString() === req.user._id.toString();
 
-    if (!session) {
-      session = await TestSession.create({
-        test: test._id,
-        user: req.user._id,
-        status: 'started',
-        startTime: new Date(),
-        deviceInfo: {
-          userAgent: req.headers['user-agent'],
-          ip: req.ip
-        }
-      });
+    // Check visibility and access
+    const isPublic = test.accessControl.type === 'public';
+    const isPractice = test.type === 'practice';
+    const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
+
+    // Determine if user can register
+    const canRegister = isAdmin || isVendor || isPublic || isPractice || isAllowed;
+
+    if (!canRegister) {
+      return res.status(403).json({ message: 'You are not authorized to take this test' });
     }
 
-    // Check existing registration
+    // Check for existing registration
     const existingRegistration = await TestRegistration.findOne({
       test: test._id,
       user: req.user._id
     });
 
     if (existingRegistration) {
-      return res.status(200).json({
-        message: 'Already registered for this test',
-        registration: {
-          _id: existingRegistration._id,
-          test: existingRegistration.test,
-          user: existingRegistration.user,
-          status: existingRegistration.status,
-          testType: existingRegistration.testType,
-          registrationType: existingRegistration.registrationType,
-          isVendorAttempt: existingRegistration.isVendorAttempt,
-          registeredAt: existingRegistration.registeredAt,
-          createdAt: existingRegistration.createdAt,
-          updatedAt: existingRegistration.updatedAt,
-          __v: existingRegistration.__v,
-          sessionId: session._id // Moved inside registration object for consistency
-        }
-      });
+      return res.status(400).json({ message: 'You are already registered for this test' });
     }
 
-    // Create new registration
-    const registration = await TestRegistration.create({
-      test: test._id,
-      user: req.user._id,
-      status: 'registered',
-      testType: test.accessControl.type,
-      registrationType: test.type,
-      isVendorAttempt: req.user.role === 'vendor',
-      registeredAt: new Date()
-    });
+    // For assessment tests, check if already completed
+    if (test.type === 'assessment') {
+      const existingSubmission = await TestResult.findOne({
+        test: test._id,
+        user: req.user._id,
+        status: 'completed'
+      });
 
-    return res.status(201).json({
-      message: 'Successfully registered for test',
-      registration: {
-        _id: registration._id,
-        test: registration.test,
-        user: registration.user,
-        status: registration.status,
-        testType: registration.testType,
-        registrationType: registration.registrationType,
-        isVendorAttempt: registration.isVendorAttempt,
-        registeredAt: registration.registeredAt,
-        createdAt: registration.createdAt,
-        updatedAt: registration.updatedAt,
-        __v: registration.__v,
-        sessionId: session._id // Moved inside registration object for consistency
+      if (existingSubmission) {
+        return res.status(400).json({ message: 'You have already completed this test' });
       }
-    });
+    }
 
+    // Create registration and session
+    // ... rest of the existing registration code ...
   } catch (error) {
     console.error('Error in registerForTest:', error);
     res.status(500).json({ 
@@ -2174,3 +2201,166 @@ export const registerForTest = async (req, res) => {
   }
 };
 
+export const validateSession = async (req, res) => {
+  try {
+    const { uuid, sessionId } = req.params;
+    console.log('Validating session:', { uuid, sessionId, userId: req.user._id });
+
+    // Find the test first
+    const test = await Test.findOne({ uuid });
+    if (!test) {
+      return res.status(404).json({ 
+        message: 'Test not found',
+        status: 'error' 
+      });
+    }
+
+    // Find the session with proper population
+    const session = await TestSession.findOne({
+      _id: sessionId,
+      test: test._id,
+      user: req.user._id
+    }).populate('test', 'duration timeLimit');
+
+    if (!session) {
+      return res.status(404).json({ 
+        message: 'Session not found',
+        status: 'error'
+      });
+    }
+
+    // Check if session is already ended
+    if (session.status !== 'active') {
+      return res.status(400).json({ 
+        message: 'Session is no longer active',
+        session: {
+          status: session.status,
+          endTime: session.endTime
+        }
+      });
+    }
+
+    // Calculate time remaining
+    const startTime = session.startTime || session.createdAt;
+    const timeElapsed = Date.now() - startTime;
+    const timeLimit = (test.timeLimit || test.duration) * 60 * 1000; // Convert to milliseconds
+    const timeRemaining = Math.max(0, timeLimit - timeElapsed);
+
+    // Auto-end session if time is up
+    if (timeRemaining <= 0) {
+      session.status = 'completed';
+      session.endTime = new Date(startTime.getTime() + timeLimit);
+      await session.save();
+
+      return res.status(400).json({
+        message: 'Session has expired',
+        session: {
+          status: 'completed',
+          endTime: session.endTime,
+          reason: 'timeout'
+        }
+      });
+    }
+
+    // Return valid session details
+    return res.json({
+      session: {
+        id: session._id,
+        status: session.status,
+        startTime: startTime,
+        timeRemaining,
+        timeElapsed,
+        totalDuration: timeLimit,
+        warnings: session.warnings || 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Session validation error:', error);
+    return res.status(500).json({ 
+      message: 'Error validating session',
+      error: error.message 
+    });
+  }
+};
+
+export const updateTestType = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { type } = req.body;
+
+    // Validate test type
+    if (!['assessment', 'practice'].includes(type)) {
+      return res.status(400).json({
+        error: "Invalid test type. Must be either 'assessment' or 'practice'",
+        receivedType: type
+      });
+    }
+
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    // Check authorization
+    if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Not authorized to update test type" });
+    }
+
+    // Update test type
+    const updatedTest = await Test.findByIdAndUpdate(
+      testId,
+      { 
+        $set: { 
+          type,
+          updatedAt: new Date()
+        }
+      },
+      { 
+        new: true,
+        select: 'title type status updatedAt' 
+      }
+    );
+
+    // Add type change to test history
+    await Test.findByIdAndUpdate(testId, {
+      $push: {
+        history: {
+          action: 'type_changed',
+          from: test.type,
+          to: type,
+          changedBy: req.user._id,
+          timestamp: new Date()
+        }
+      }
+    });
+
+    res.json({
+      message: "Test type updated successfully",
+      test: {
+        _id: updatedTest._id,
+        title: updatedTest.title,
+        type: updatedTest.type,
+        status: updatedTest.status,
+        updatedAt: updatedTest.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in updateTestType:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({ 
+        error: "Invalid test ID format",
+        details: error.message 
+      });
+    }
+    res.status(500).json({ 
+      error: "Failed to update test type",
+      details: error.message 
+    });
+  }
+};
+
+
+
+// export const updateTest = async (req, res) => {

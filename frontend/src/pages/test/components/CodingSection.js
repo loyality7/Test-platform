@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { 
   Check, X, Play, ChevronLeft, ChevronRight, 
@@ -7,7 +7,8 @@ import {
 import { apiService } from '../../../services/api';
 import { toast } from 'react-hot-toast';
 
-export default function CodingSection({ challenges, answers, setAnswers, onSubmitCoding, testId }) {
+export default function CodingSection({ challenges, answers, setAnswers, onSubmitCoding, setAnalytics }) {
+  // Move ALL state declarations to the top
   const [currentChallenge, setCurrentChallenge] = useState(0);
   const [language, setLanguage] = useState('');
   const [testResults, setTestResults] = useState({});
@@ -15,54 +16,69 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [theme, setTheme] = useState('vs-dark');
-  const [executionResults, setExecutionResults] = useState({});
   const [submissionStatus, setSubmissionStatus] = useState({});
   const [isLoadingTestId, setIsLoadingTestId] = useState(false);
   const [fontSize, setFontSize] = useState(14);
   const [showLineNumbers, setShowLineNumbers] = useState(true);
   const [wordWrap, setWordWrap] = useState(true);
   const [autoComplete, setAutoComplete] = useState(true);
-
-  // Add layout state and constants
+  const [editorValue, setEditorValue] = useState('// Write your code here\n');
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executingTests, setExecutingTests] = useState(new Set());
   const [layout, setLayout] = useState({
-    leftPanel: 35, // percentage
-    rightPanel: 25, // percentage
+    leftPanel: 35,
+    rightPanel: 25,
     isDragging: false
   });
 
-  const MIN_PANEL_WIDTH = 20; // minimum width percentage
-  const MAX_PANEL_WIDTH = 60; // maximum width percentage
+  // Constants
+  const MIN_PANEL_WIDTH = 20;
+  const MAX_PANEL_WIDTH = 60;
+  
+  // Get current challenge
+  const challenge = challenges?.[currentChallenge];
 
-  // Add resize handlers
-  const handleLeftResize = useCallback((e) => {
-    if (!layout.isDragging) return;
+  // Fix for setAnswers exhaustive deps warning - add at the top of the component
+  const memoizedSetAnswers = useCallback((newAnswers) => {
+    setAnswers(newAnswers);
+  }, [setAnswers]);
+
+  // Update handleEditorChange to use optional chaining
+  const handleEditorChange = useCallback((value) => {
+    setEditorValue(value);
     
-    const container = e.currentTarget.parentElement;
-    const newWidth = (e.clientX / container.offsetWidth) * 100;
+    if (challenge?._id) {
+      const newAnswers = {
+        ...answers,
+        [challenge._id]: {
+          code: value,
+          language: language
+        }
+      };
+      memoizedSetAnswers(newAnswers);
+      console.log('Updated answers:', newAnswers);
+    }
+  }, [answers, challenge?._id, language, memoizedSetAnswers]);
+
+  // Define handleResetCode before any useEffect hooks
+  const handleResetCode = () => {
+    const challenge = challenges[currentChallenge];
+    if (!challenge || !language) return;
     
-    if (newWidth >= MIN_PANEL_WIDTH && newWidth <= MAX_PANEL_WIDTH) {
-      setLayout(prev => ({
+    const defaultCode = challenge.languageImplementations?.[language]?.visibleCode;
+    if (defaultCode) {
+      setEditorValue(defaultCode);
+      setAnswers(prev => ({
         ...prev,
-        leftPanel: newWidth
+        [challenge._id]: {
+          code: defaultCode,
+          language
+        }
       }));
     }
-  }, [layout.isDragging]);
+  };
 
-  const handleRightResize = useCallback((e) => {
-    if (!layout.isDragging) return;
-    
-    const container = e.currentTarget.parentElement;
-    const containerWidth = container.offsetWidth;
-    const newWidth = ((containerWidth - e.clientX) / containerWidth) * 100;
-    
-    if (newWidth >= MIN_PANEL_WIDTH && newWidth <= MAX_PANEL_WIDTH) {
-      setLayout(prev => ({
-        ...prev,
-        rightPanel: newWidth
-      }));
-    }
-  }, [layout.isDragging]);
-
+  // All useEffect hooks together at the top level
   useEffect(() => {
     const parseTestUUID = async () => {
       try {
@@ -87,56 +103,71 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     }
   }, []);
 
+  // Update useEffect for challenge changes to use the API data
   useEffect(() => {
-    if (challenges?.length > 0 && !language) {
+    if (challenges?.length > 0) {
       const challenge = challenges[currentChallenge];
       if (challenge?.allowedLanguages?.length > 0) {
-        setLanguage(challenge.allowedLanguages[0].toLowerCase());
-      }
-    }
-  }, [challenges, currentChallenge, language]);
-
-  React.useEffect(() => {
-    const savedData = localStorage.getItem(`coding_${testId}`);
-    if (savedData) {
-      const parsed = JSON.parse(savedData);
-      setAnswers(parsed.answers);
-      setExecutionResults(parsed.executionResults);
-    }
-  }, [testId, setAnswers]);
-
-  const saveToLocalStorage = useCallback((newAnswers, newResults) => {
-    if (!testId) return;
-    localStorage.setItem(`coding_${testId}`, JSON.stringify({
-      answers: newAnswers,
-      executionResults: newResults
-    }));
-  }, [testId]);
-
-  // Initialize answers with default code
-  useEffect(() => {
-    if (!answers || Object.keys(answers).length === 0) {
-      if (!language || !challenges) return;
-      
-      const initialAnswers = {};
-      challenges.forEach(ch => {
-        if (!answers?.[ch._id]) {
-          const defaultCode = ch.languageImplementations?.[language]?.visibleCode || '// Write your code here\n';
-          console.log('Setting initial code for challenge:', ch._id, defaultCode);
-          initialAnswers[ch._id] = {
-            code: defaultCode,
-            language: language
+        const defaultLanguage = challenge.allowedLanguages[0].toLowerCase();
+        setLanguage(defaultLanguage);
+        
+        // Initialize answers if they don't exist
+        const existingAnswer = answers[challenge._id];
+        if (!existingAnswer) {
+          const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || '// Write your code here\n';
+          setEditorValue(visibleCode);
+          
+          const newAnswers = {
+            ...answers,
+            [challenge._id]: {
+              code: visibleCode,
+              language: defaultLanguage
+            }
           };
+          setAnswers(newAnswers);
+          console.log('Initialized answers:', newAnswers);
+        } else {
+          setEditorValue(existingAnswer.code);
+          setLanguage(existingAnswer.language);
         }
-      });
-      
-      if (Object.keys(initialAnswers).length > 0) {
-        setAnswers(initialAnswers);
-        saveToLocalStorage(initialAnswers, {});
       }
     }
-  }, [challenges, language, answers, setAnswers, saveToLocalStorage]);
+  }, [challenges, currentChallenge]);
 
+  // Handle left panel resize
+  const handleLeftResize = useCallback((e) => {
+    if (layout.isDragging) {
+      const containerWidth = document.querySelector('.h-[calc(100vh-10rem)]')?.clientWidth || 0;
+      const newLeftWidth = (e.clientX / containerWidth) * 100;
+      
+      // Ensure the panel stays within min/max bounds
+      if (newLeftWidth >= MIN_PANEL_WIDTH && newLeftWidth <= MAX_PANEL_WIDTH) {
+        setLayout(prev => ({
+          ...prev,
+          leftPanel: newLeftWidth
+        }));
+      }
+    }
+  }, [layout.isDragging]);
+
+  // Handle right panel resize
+  const handleRightResize = useCallback((e) => {
+    if (layout.isDragging) {
+      const containerWidth = document.querySelector('.h-[calc(100vh-10rem)]')?.clientWidth || 0;
+      const rightEdge = containerWidth;
+      const newRightWidth = ((rightEdge - e.clientX) / containerWidth) * 100;
+      
+      // Ensure the panel stays within min/max bounds
+      if (newRightWidth >= MIN_PANEL_WIDTH && newRightWidth <= MAX_PANEL_WIDTH) {
+        setLayout(prev => ({
+          ...prev,
+          rightPanel: newRightWidth
+        }));
+      }
+    }
+  }, [layout.isDragging]);
+
+  // Update the existing useEffect to include these functions in dependencies
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (layout.isDragging) {
@@ -158,11 +189,45 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     };
   }, [layout.isDragging, handleLeftResize, handleRightResize]);
 
+  // Debug useEffect
+  useEffect(() => {
+    console.log('Challenges changed:', challenges);
+    console.log('Current challenge:', currentChallenge);
+    console.log('Current language:', language);
+    console.log('Current answers:', answers);
+  }, [challenges, currentChallenge, language, answers]);
+
+  // Add this debug useEffect to track state changes
+  useEffect(() => {
+    console.log('Answers state updated:', answers);
+  }, [answers]);
+
+  // Track time per challenge
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      setAnalytics(prev => {
+        const updated = {
+          ...prev,
+          codingMetrics: {
+            ...prev.codingMetrics,
+            timePerChallenge: {
+              ...prev.codingMetrics.timePerChallenge,
+              [currentChallenge]: (prev.codingMetrics.timePerChallenge[currentChallenge] || 0) + 
+                                 (Date.now() - startTime) / 1000
+            }
+          }
+        };
+        updateLocalAnalytics(updated);
+        return updated;
+      });
+    };
+  }, [currentChallenge, setAnalytics]);
+
+  // Now your early returns are after all state declarations
   if (!challenges || challenges.length === 0) {
     return <div>No challenges available</div>;
   }
-
-  const challenge = challenges[currentChallenge];
 
   if (!challenge) {
     return <div>Challenge not found</div>;
@@ -170,81 +235,133 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
   console.log('Current Test Results:', testResults);
 
-  const handleEditorChange = (value) => {
-    if (!challenge?._id) return;
-    
-    console.log('Updating code:', value);
-    
-    setAnswers(prev => ({
-      ...prev,
-      [challenge._id]: {
-        code: value,
-        language
-      }
-    }));
-    
-    saveToLocalStorage({
-      ...answers,
-      [challenge._id]: {
-        code: value,
-        language
-      }
-    }, executionResults);
-  };
-
   const handleSubmitChallenge = async () => {
     try {
-      const currentTestId = testId;
+      const currentTestId = localStorage.getItem('currentTestId');
       
       if (!currentTestId) {
-        toast.error('Test ID not found');
+        toast.error('Test ID not found. Please reload the page.');
         return;
       }
 
+      console.log('Starting submission...');
       setSubmissionStatus(prev => ({ ...prev, [challenge._id]: 'submitting' }));
+      
+      const currentCode = answers[challenge._id]?.code;
+      if (!currentCode?.trim()) {
+        toast.error('Please write some code before submitting');
+        setSubmissionStatus(prev => ({ ...prev, [challenge._id]: undefined }));
+        return;
+      }
 
-      // Format the submission
-      const submission = {
-        testId: currentTestId,
-        submissions: challenges.map(ch => ({
-          challengeId: ch._id,
-          code: answers[ch._id]?.code || '',
+      // Execute all test cases (visible and hidden)
+      const allTestCases = challenge.testCases;
+      const results = [];
+      
+      // Show loading toast for hidden test cases
+      const loadingToast = toast.loading('Running hidden test cases...');
+
+      for (const testCase of allTestCases) {
+        const response = await apiService.post('code/execute', {
+          code: currentCode,
           language: language,
-          testCaseResults: executionResults[ch._id]?.testCaseResults || [],
-          executionTime: executionResults[ch._id]?.executionTime || 0,
-          memory: executionResults[ch._id]?.memory || 0,
-          output: executionResults[ch._id]?.output || '',
-          error: executionResults[ch._id]?.error || null
-        }))
+          inputs: testCase.input
+        });
+
+        let output;
+        if (response?.status !== 'Accepted') {
+          output = response.error;
+        } else {
+          output = response?.output || '';
+        }
+        const cleanOutput = output.trim();
+        const expectedOutput = testCase.output?.trim() || '';
+        const passed = cleanOutput === expectedOutput;
+
+        results.push({
+          input: testCase.input || '',
+          expectedOutput: expectedOutput,
+          actualOutput: cleanOutput,
+          error: response?.error || null,
+          passed: passed,
+          executionTime: response?.executionTime || 0,
+          memory: response?.memory || 0,
+          status: response?.status || 'Error',
+          isHidden: testCase.isHidden
+        });
+      }
+
+      // Separate visible and hidden results
+      const visibleResults = results.filter(r => !r.isHidden);
+      const hiddenResults = results.filter(r => r.isHidden);
+
+      // Update visible test results in UI
+      setTestResults(prev => ({
+        ...prev,
+        [challenge._id]: {
+          status: visibleResults.every(r => r.passed) ? 'Passed' : 'Failed',
+          executionTime: visibleResults.reduce((sum, r) => sum + r.executionTime, 0),
+          memory: Math.max(...visibleResults.map(r => r.memory)),
+          testCaseResults: visibleResults
+        }
+      }));
+
+      // Show hidden test cases summary
+      const hiddenTestsPassed = hiddenResults.filter(r => r.passed).length;
+      toast.dismiss(loadingToast);
+      toast.success(`Hidden Test Cases: ${hiddenTestsPassed}/${hiddenResults.length} passed`);
+
+      // Submit all results
+      const submissionData = {
+        testId: currentTestId,
+        submissions: [{
+          challengeId: challenge._id,
+          code: currentCode,
+          language: language,
+          testCaseResults: results, // Send all results to backend
+          executionTime: results.reduce((sum, r) => sum + r.executionTime, 0),
+          memory: Math.max(...results.map(r => r.memory)),
+          output: results[0]?.output || '',
+          error: results.some(r => r.error) ? results.find(r => r.error)?.error : null
+        }]
       };
 
-      const response = await apiService.post('submissions/submit/coding', submission);
-      
-      if (response?.data?.submission) {
+      const response = await apiService.post('submissions/submit/coding', submissionData);
+      console.log('Submission successful:', response);
+
+      if (response?.submission) {
+        // Immediately update submission status to 'submitted'
         setSubmissionStatus(prev => ({
           ...prev,
           [challenge._id]: 'submitted'
         }));
+        
         toast.success('Challenge submitted successfully!');
         
-        // Calculate completion status
-        const allChallengesSubmitted = challenges.every(ch => 
-          submissionStatus[ch._id] === 'submitted' || 
-          ch._id === challenge._id
-        );
-
-        if (allChallengesSubmitted) {
+        // Check if all challenges are completed
+        const allChallengesCompleted = challenges.every(ch => submissionStatus[ch._id] === 'submitted');
+        if (allChallengesCompleted) {
+          console.log('All challenges completed!');
           toast.success('All coding challenges completed!');
-          // Call the parent's submission handler
+          // Ensure onSubmitCoding is called with the correct data
           onSubmitCoding({
-            codingSubmission: submission,
-            totalScore: response.data.submission.totalScore || 0
+            codingSubmission: response.submission.codingSubmission,
+            totalScore: response.submission.totalScore || 0
           });
         }
+
+        // Add a small delay before moving to the next challenge if not on the last one
+        if (currentChallenge < challenges.length - 1) {
+          setTimeout(() => {
+            setCurrentChallenge(prev => prev + 1);
+          }, 1500);
+        }
       }
+
     } catch (error) {
       console.error('Submission Error:', error);
-      toast.error('Failed to submit: ' + (error.response?.data?.message || error.message));
+      toast.error('Failed to submit: ' + (error.response?.message || error.message));
+      // Reset submission status on error
       setSubmissionStatus(prev => ({
         ...prev,
         [challenge._id]: undefined
@@ -252,104 +369,119 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     }
   };
 
-  const handleResetCode = () => {
-    if (!challenge || !language) return;
-    
-    const defaultCode = challenge.languageImplementations?.[language]?.visibleCode;
-    if (defaultCode) {
-      setAnswers(prev => ({
-        ...prev,
-        [challenge._id]: {
-          code: defaultCode,
-          language
-        }
-      }));
-      
-      // Also update localStorage
-      saveToLocalStorage({
-        ...answers,
-        [challenge._id]: {
-          code: defaultCode,
-          language
-        }
-      }, executionResults);
-    }
-  };
-
+  // Update handleExecuteCode to properly handle the response
   const handleExecuteCode = async () => {
     try {
-      setIsRunning(true);
-      const currentCode = answers[challenge._id]?.code;
+      setIsExecuting(true);
+      setShowTestPanel(true);
       
-      if (!currentCode || currentCode.trim() === '') {
+      const currentCode = answers[challenge._id]?.code;
+      if (!currentCode?.trim()) {
         toast.error('Please write some code before running');
         return;
       }
-      
-      if (!language) {
-        toast.error('Please select a programming language');
-        return;
-      }
 
-      const results = [];
-      for (const testCase of challenge.testCases) {
-        try {
-          const requestData = {
-            language,
-            code: currentCode,
-            inputs: testCase.input // This should be a string
-          };
-          
-          console.log('API Request:', requestData);
-
-          // Update the API endpoint to match your specification
-          const response = await apiService.post('code/execute', requestData);
-          console.log('API Response:', response.data);
-
-          // Handle the response based on the API format you showed
-          const result = {
-            input: testCase.input,
-            expectedOutput: testCase.output,
-            actualOutput: response.data.output || '',
-            error: response.data.error || null,
-            passed: response.data.output?.trim() === testCase.output?.trim(),
-            executionTime: response.data.executionTime || 0,
-            memory: response.data.memory || 0,
-            status: response.data.status || 'Unknown'
-          };
-
-          results.push(result);
-
-        } catch (error) {
-          console.error('Test case execution error:', error);
-          results.push({
-            input: testCase.input,
-            expectedOutput: testCase.output,
-            actualOutput: '',
-            error: error.response?.data?.error || error.message,
-            passed: false,
-            executionTime: 0,
-            memory: 0,
-            status: 'Runtime Error'
-          });
+      // Track compilation attempt
+      setAnalytics(prev => ({
+        ...prev,
+        codingMetrics: {
+          ...prev.codingMetrics,
+          compilationAttempts: {
+            ...prev.codingMetrics.compilationAttempts,
+            [challenge._id]: (prev.codingMetrics.compilationAttempts[challenge._id] || 0) + 1
+          }
         }
+      }));
+
+      // Get all non-hidden test cases
+      const visibleTestCases = challenge.testCases.filter(test => !test.isHidden);
+      const results = [];
+
+      // Execute each visible test case
+      for (const testCase of visibleTestCases) {
+        setExecutingTests(prev => new Set(prev).add(testCase.id));
+        
+        const response = await apiService.post('code/execute', {
+          code: currentCode,
+          language: language,
+          inputs: testCase.input
+        });
+
+        // Handle different response statuses
+        let output = '';
+        let error = null;
+        let status = response?.status || 'Error';
+
+        if (status === 'Runtime Error (NZEC)' || status !== 'Accepted') {
+          error = response?.error || 'Execution failed';
+          output = ''; // Clear output on error
+        } else {
+          output = response?.output || '';
+        }
+
+        const cleanOutput = output.trim();
+        const expectedOutput = testCase.output?.trim() || '';
+        const passed = status === 'Accepted' && cleanOutput === expectedOutput;
+
+        results.push({
+          input: testCase.input || '',
+          expectedOutput: expectedOutput,
+          actualOutput: cleanOutput,
+          error: error,
+          passed: passed,
+          executionTime: response?.executionTime || 0,
+          memory: response?.memory || 0,
+          status: status
+        });
+
+        setExecutingTests(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(testCase.id);
+          return newSet;
+        });
       }
 
+      // Update test results
       setTestResults(prev => ({
         ...prev,
         [challenge._id]: {
-          status: results.every(r => r.passed) ? 'Accepted' : 'Wrong Answer',
-          executionTime: Math.max(...results.map(r => r.executionTime || 0)),
-          memory: Math.max(...results.map(r => r.memory || 0)),
+          status: results.every(r => r.passed) ? 'Passed' : 'Failed',
+          executionTime: results.reduce((sum, r) => sum + r.executionTime, 0),
+          memory: Math.max(...results.map(r => r.memory)),
           testCaseResults: results
         }
       }));
 
+      // Track test case runs and errors
+      setAnalytics(prev => ({
+        ...prev,
+        codingMetrics: {
+          ...prev.codingMetrics,
+          testCaseRuns: {
+            ...prev.codingMetrics.testCaseRuns,
+            [challenge._id]: (prev.codingMetrics.testCaseRuns[challenge._id] || 0) + 1
+          },
+          errorFrequency: {
+            ...prev.codingMetrics.errorFrequency,
+            [challenge._id]: {
+              ...prev.codingMetrics.errorFrequency[challenge._id],
+              [results.find(r => r.error)?.error?.type]: (
+                prev.codingMetrics.errorFrequency[challenge._id]?.[results.find(r => r.error)?.error?.type] || 0
+              ) + 1
+            }
+          }
+        }
+      }));
+
+      return results;
+
     } catch (error) {
       console.error('Code execution error:', error);
-      toast.error(error.message || 'Failed to execute code');
+      toast.error('Failed to execute code: ' + (error.response?.data?.message || error.message));
+      return [];
     } finally {
-      setIsRunning(false);
+      setIsExecuting(false);
+      setExecutingTests(new Set());
     }
   };
 
@@ -357,17 +489,14 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     if (!challenge?._id) return null;
 
     const status = submissionStatus[challenge._id];
-    const hasExecutionResults = !!executionResults[challenge._id];
-    const allTestsPassed = executionResults[challenge._id]?.testCaseResults?.every(r => r.passed);
-    const hasCode = !!answers?.[challenge._id]?.code;
+    const currentResults = testResults[challenge._id];
+    const hasCode = answers[challenge._id]?.code?.trim().length > 0;
     
-    console.log('Code being written:', answers?.[challenge._id]?.code);
-
     if (!hasCode) {
       return (
         <button 
           disabled
-          className="px-3 py-1.5 bg-gray-400 text-white rounded flex items-center gap-1 text-sm"
+          className="px-3 py-1.5 bg-gray-400 text-white rounded flex items-center gap-1 text-sm cursor-not-allowed"
           title="Write some code first"
         >
           <Check className="w-3.5 h-3.5" />
@@ -376,40 +505,44 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
       );
     }
 
-    if (status === 'submitted') {
-      return (
-        <button disabled className="px-3 py-1.5 bg-green-600 text-white rounded flex items-center gap-1 text-sm">
-          <Check className="w-3.5 h-3.5" />
-          Submitted
-        </button>
-      );
+    switch (status) {
+      case 'submitted':
+        return (
+          <button 
+            disabled 
+            className="px-3 py-1.5 bg-green-600 text-white rounded flex items-center gap-1 text-sm cursor-not-allowed"
+          >
+            <Check className="w-3.5 h-3.5" />
+            Submitted
+          </button>
+        );
+      
+      case 'submitting':
+        return (
+          <button 
+            disabled 
+            className="px-3 py-1.5 bg-blue-600 text-white rounded flex items-center gap-1 text-sm cursor-not-allowed"
+          >
+            <span className="animate-spin">⌛</span>
+            Submitting...
+          </button>
+        );
+      
+      default:
+        return (
+          <button 
+            onClick={handleSubmitChallenge}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 cursor-pointer text-white rounded flex items-center gap-1 text-sm transition-colors"
+            title="Submit your solution"
+          >
+            <Check className="w-3.5 h-3.5" />
+            Submit
+          </button>
+        );
     }
-
-    if (status === 'submitting') {
-      return (
-        <button disabled className="px-3 py-1.5 bg-blue-600 text-white rounded flex items-center gap-1 text-sm">
-          <span className="animate-spin">⌛</span>
-          Submitting...
-        </button>
-      );
-    }
-
-    return (
-      <button 
-        onClick={handleSubmitChallenge}
-        disabled={!hasExecutionResults || !allTestsPassed}
-        className={`px-3 py-1.5 ${
-          hasExecutionResults && allTestsPassed ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400'
-        } text-white rounded flex items-center gap-1 text-sm`}
-        title={!hasExecutionResults ? 'Run your code first' : !allTestsPassed ? 'All tests must pass' : 'Submit your solution'}
-      >
-        <Check className="w-3.5 h-3.5" />
-        Submit
-      </button>
-    );
   };
 
-  // Update the Monaco Editor configuration
+  // Update editor options with additional settings
   const editorOptions = {
     minimap: { enabled: false },
     fontSize: fontSize,
@@ -417,53 +550,19 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     wordWrap: wordWrap ? 'on' : 'off',
     automaticLayout: true,
     readOnly: false,
-    contextmenu: true,
-    quickSuggestions: autoComplete,
+    domReadOnly: false,
     scrollBeyondLastLine: false,
     tabSize: 2,
+    // Keep basic editing features enabled
     formatOnPaste: true,
     formatOnType: true,
     autoIndent: 'full',
-    snippetSuggestions: 'inline',
-    suggest: {
-      showKeywords: true,
-      showSnippets: true,
-      showClasses: true,
-      showFunctions: true,
-      showVariables: true,
-    },
-    hover: {
-      enabled: true,
-      delay: 300,
-    },
-    bracketPairColorization: {
-      enabled: true,
-    },
+    quickSuggestions: autoComplete,
+    suggestOnTriggerCharacters: autoComplete,
+    parameterHints: autoComplete ? { enabled: true } : { enabled: false },
   };
 
-  // Add keyboard shortcuts handler
-  const handleEditorDidMount = (editor, monaco) => {
-    editor.focus();
-    
-    // Add custom keyboard shortcuts
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      handleExecuteCode();
-    });
-    
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      saveToLocalStorage(answers, executionResults);
-      toast.success('Code saved!');
-    });
-
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
-      setShowTestPanel(!showTestPanel);
-    });
-
-    // Prevent default copy/paste if needed
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, () => {});
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {});
-  };
-
+  // Update the renderTestResults function to better handle errors
   const renderTestResults = () => {
     const currentResults = testResults[challenge?._id];
     
@@ -477,84 +576,76 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
     return (
       <div className="space-y-4">
-        {/* Overall Status */}
-        <div className={`p-3 rounded-lg ${
-          currentResults.status === 'Accepted' 
-            ? 'bg-green-500/10 text-green-500' 
-            : 'bg-red-500/10 text-red-500'
-        }`}>
-          <div className="font-medium">Status: {currentResults.status}</div>
-          <div className="text-sm mt-1">
-            <div>Execution Time: {currentResults.executionTime}ms</div>
-            <div>Memory Used: {currentResults.memory}KB</div>
-          </div>
-        </div>
+        {challenge?.testCases
+          ?.filter(testCase => !testCase.isHidden)
+          ?.map((testCase, index) => {
+            const result = currentResults?.testCaseResults?.[index];
+            const isExecuting = executingTests.has(testCase.id);
 
-        {/* Test Cases */}
-        <div className="space-y-3">
-          {currentResults.testCaseResults?.map((result, index) => (
-            <div 
-              key={index}
-              className={`p-3 rounded-lg border ${
-                result.passed 
-                  ? 'border-green-500/20 bg-green-500/5' 
-                  : 'border-red-500/20 bg-red-500/5'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="font-medium text-gray-200">
-                  Test Case {index + 1}
+            if (isExecuting) {
+              return (
+                <div key={index} className="bg-[#2d2d2d] p-4 rounded">
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span className="text-gray-400">Executing Test Case {index + 1}...</span>
+                  </div>
                 </div>
-                <div className={`flex items-center ${
-                  result.passed ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {result.passed ? (
-                    <Check className="w-4 h-4 mr-1" />
+              );
+            }
+
+            return (
+              <div key={index} className="space-y-2">
+                <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+                  <span>Test Case {index + 1}</span>
+                  <span className={`flex items-center gap-1 ${result.passed ? 'text-green-500' : 'text-red-500'}`}>
+                    {result.passed ? (
+                      <>
+                        <Check className="w-4 h-4" />
+                        Passed
+                      </>
+                    ) : (
+                      <>
+                        <X className="w-4 h-4" />
+                        Failed
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                <div className="bg-[#2d2d2d] p-2 rounded">
+                  <div className="text-gray-400 text-xs mb-1">Input:</div>
+                  <pre className="text-gray-200 font-mono text-sm">{result.input}</pre>
+                </div>
+
+                <div className="bg-[#2d2d2d] p-2 rounded">
+                  <div className="text-gray-400 text-xs mb-1">Expected Output:</div>
+                  <pre className="text-gray-200 font-mono text-sm">{result.expectedOutput}</pre>
+                </div>
+
+                <div className="bg-[#2d2d2d] p-2 rounded">
+                  <div className="text-gray-400 text-xs mb-1">Your Output:</div>
+                  {result.error ? (
+                    <div className="text-red-400 font-mono text-sm whitespace-pre-wrap">{result.error}</div>
                   ) : (
-                    <X className="w-4 h-4 mr-1" />
+                    <pre className="text-gray-200 font-mono text-sm">{result.actualOutput}</pre>
                   )}
-                  {result.passed ? 'Passed' : 'Failed'}
-                </div>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="bg-[#2d2d2d] p-2 rounded">
-                  <div className="text-gray-400 mb-1">Input:</div>
-                  <div className="text-gray-200 font-mono">
-                    {result.input}
-                  </div>
-                </div>
-
-                <div className="bg-[#2d2d2d] p-2 rounded">
-                  <div className="text-gray-400 mb-1">Expected Output:</div>
-                  <div className="text-gray-200 font-mono">
-                    {result.expectedOutput}
-                  </div>
-                </div>
-
-                <div className="bg-[#2d2d2d] p-2 rounded">
-                  <div className="text-gray-400 mb-1">Your Output:</div>
-                  <div className="text-gray-200 font-mono">
-                    {result.actualOutput}
-                  </div>
-                </div>
-
-                {result.error && (
-                  <div className="bg-red-500/10 text-red-400 p-2 rounded">
-                    <div className="font-medium mb-1">Error:</div>
-                    <div className="font-mono text-xs">
-                      {result.error}
+                  {!result.passed && !result.error && (
+                    <div className="mt-2 text-xs">
+                      <span className="text-red-400">Raw output: </span>
+                      <span className="text-gray-300">"{result.actualOutput}"</span>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                <div className="text-gray-400 text-xs">
-                  Execution Time: {result.executionTime}ms
+                {/* Add execution details */}
+                <div className="text-xs text-gray-400">
+                  Status: <span className={result.status === 'Accepted' ? 'text-green-500' : 'text-red-500'}>{result.status}</span>
+                  {result.executionTime > 0 && <> • Time: {result.executionTime.toFixed(3)}s</>}
+                  {result.memory > 0 && <> • Memory: {result.memory.toFixed(2)}KB</>}
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            );
+          })}
       </div>
     );
   };
@@ -648,6 +739,45 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     );
   };
 
+  // Update handleLanguageChange to preserve user code when changing languages
+  const handleLanguageChange = (newLanguage) => {
+    setLanguage(newLanguage);
+    
+    // Preserve existing code unless explicitly resetting
+    if (challenge?._id && answers[challenge._id]?.code) {
+      setAnswers(prev => ({
+        ...prev,
+        [challenge._id]: {
+          ...prev[challenge._id],
+          language: newLanguage
+        }
+      }));
+    } else {
+      // Only use default code if there's no existing code
+      const visibleCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || '';
+      setEditorValue(visibleCode);
+      setAnswers(prev => ({
+        ...prev,
+        [challenge._id]: {
+          code: visibleCode,
+          language: newLanguage
+        }
+      }));
+    }
+  };
+
+  // Add this function near the top of the component, after state declarations
+  const updateLocalAnalytics = (analytics) => {
+    try {
+      const testId = localStorage.getItem('currentTestId');
+      if (testId) {
+        localStorage.setItem(`analytics_${testId}`, JSON.stringify(analytics));
+      }
+    } catch (error) {
+      console.error('Error updating local analytics:', error);
+    }
+  };
+
   return (
     <div className="relative h-full">
       {isLoadingTestId && (
@@ -665,7 +795,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           <div className="flex items-center gap-2">
             <select
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
+              onChange={(e) => handleLanguageChange(e.target.value)}
               className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
             >
               {challenge?.allowedLanguages?.map(lang => (
@@ -722,13 +852,52 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           <div className="p-4 text-white space-y-4 overflow-y-auto">
             <h2 className="text-xl font-semibold">{challenge?.title}</h2>
             <div className="text-gray-300">{challenge?.description}</div>
-            <div className="bg-[#2d2d2d] p-3 rounded-lg">
-              <h3 className="font-medium mb-2">Problem Statement</h3>
-              <div className="text-gray-300 font-mono text-sm">
-                {challenge?.problemStatement}
+            
+            <div className="space-y-4">
+              {/* Problem Statement */}
+              <div className="bg-[#2d2d2d] p-3 rounded-lg">
+                <h3 className="font-medium mb-2">Problem Statement</h3>
+                <div className="text-gray-300 font-mono text-sm whitespace-pre-wrap">
+                  {challenge?.problemStatement}
+                </div>
+              </div>
+
+              {/* Constraints */}
+              {challenge?.constraints && (
+                <div className="bg-[#2d2d2d] p-3 rounded-lg">
+                  <h3 className="font-medium mb-2">Constraints</h3>
+                  <div className="text-gray-300 font-mono text-sm whitespace-pre-wrap">
+                    {challenge.constraints}
+                  </div>
+                </div>
+              )}
+
+              {/* Technical Details */}
+              <div className="bg-[#2d2d2d] p-3 rounded-lg">
+                <h3 className="font-medium mb-2">Technical Details</h3>
+                <div className="text-gray-300 text-sm space-y-1">
+                  <div>Time Limit: {challenge?.timeLimit || 0} seconds</div>
+                  <div>Memory Limit: {challenge?.memoryLimit || 0} MB</div>
+                  <div>Difficulty: {challenge?.difficulty || 'Not specified'}</div>
+                  <div>Points: {challenge?.marks || 0}</div>
+                </div>
+              </div>
+
+              {/* Allowed Languages */}
+              <div className="bg-[#2d2d2d] p-3 rounded-lg">
+                <h3 className="font-medium mb-2">Allowed Languages</h3>
+                <div className="flex flex-wrap gap-2">
+                  {challenge?.allowedLanguages?.map(lang => (
+                    <span 
+                      key={lang}
+                      className="px-2 py-1 bg-[#3c3c3c] rounded text-sm text-gray-300"
+                    >
+                      {lang}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
-            {/* ... rest of the problem description ... */}
           </div>
         </div>
 
@@ -737,10 +906,14 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
             height="100%"
             language={language}
             theme={theme}
-            value={answers[challenge?._id]?.code || ''}
+            value={editorValue}
             onChange={handleEditorChange}
             options={editorOptions}
-            onMount={handleEditorDidMount}
+            onMount={(editor, monaco) => {
+              editor.focus();
+            }}
+            wrapperClassName="monaco-editor-wrapper"
+            className="monaco-editor"
           />
         </div>
 

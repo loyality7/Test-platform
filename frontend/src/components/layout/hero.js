@@ -53,8 +53,13 @@ const HeroSection = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="flex items-center justify-center"
           >
-            <div className="relative h-[400px] w-full overflow-hidden rounded-xl bg-gradient-to-br from-purple-800 to-blue-600">
-              {/* Add your hero image or illustration here */}
+            <div className="relative h-[400px] w-full overflow-hidden rounded-xl">
+              <img 
+                src="https://images.unsplash.com/photo-1573164713714-d95e436ab8d6?q=80&w=1469&auto=format&fit=crop"
+                alt="Tech Professional Working"
+                className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-500"
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-800/10 to-blue-600/10"></div>
             </div>
           </motion.div>
         </div>

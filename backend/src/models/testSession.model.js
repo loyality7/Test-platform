@@ -13,9 +13,11 @@ const testSessionSchema = new mongoose.Schema({
   },
   startTime: {
     type: Date,
-    required: true
+    default: Date.now
   },
-  endTime: Date,
+  endTime: {
+    type: Date
+  },
   duration: {
     type: Number,
     required: true
@@ -31,6 +33,10 @@ const testSessionSchema = new mongoose.Schema({
     screenResolution: String,
     language: String,
     ip: String
+  },
+  warnings: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true

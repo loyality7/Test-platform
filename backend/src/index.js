@@ -13,6 +13,7 @@ import vendorRoutes from "./routes/vendor.routes.js";
 import { authenticateToken } from './middleware/auth.middleware.js';
 import userRoutes from "./routes/user.routes.js";
 import codeRoutes from "./routes/code.routes.js";
+import analyticsRoutes from './routes/analytics.routes.js';
 
 
 dotenv.config();
@@ -52,11 +53,23 @@ const swaggerDocs = swaggerJsDoc(swaggerOptions);
 
 const app = express();
 
-app.use(cors());
+// Configure CORS before other middleware
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000', process.env.FRONTEND_URL, 'http://localhost:5000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // First apply the authentication middleware
 app.use('/api', authenticateToken); // Move this BEFORE the routes
+
+// Add this before your routes
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 // Then apply the routes
 app.use("/api/auth", authRoutes);
@@ -66,6 +79,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/vendor", vendorRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/code", codeRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // Swagger UI route last
 app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerDocs));

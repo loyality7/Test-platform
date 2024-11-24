@@ -17,8 +17,14 @@ import {
   getVendorTest,
   debugTests,
   getTestUsers,
-  getUserSubmissions
+  getUserSubmissions,
+  getUserMCQSubmissions,
+  getSpecificMCQSubmission,
+  getUserCodingSubmissions,
+  getSpecificCodingSubmission
 } from "../controllers/vendor.controller.js";
+import { validateTestAccess } from '../middleware/validateTestAccess.js';
+import { addTestUsers, uploadTestUsers, removeTestUsers } from '../controllers/testAccess.controller.js';
 
 const router = express.Router();
 
@@ -893,5 +899,510 @@ router.get("/tests/:testId/users", auth, checkRole(["vendor"]), getTestUsers);
  *         description: Test not found
  */
 router.get("/tests/:testId/users/:userId/submissions", auth, checkRole(["vendor"]), getUserSubmissions);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/{userId}/mcq:
+ *   get:
+ *     summary: Get all MCQ submissions for a user's test
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the test
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user
+ *     responses:
+ *       200:
+ *         description: MCQ submissions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   questionId:
+ *                     type: string
+ *                     description: ID of the MCQ question
+ *                   behavior:
+ *                     type: object
+ *                     properties:
+ *                       warnings:
+ *                         type: number
+ *                         description: Number of warnings issued
+ *                       tabSwitches:
+ *                         type: number
+ *                         description: Number of tab switches
+ *                       timeSpent:
+ *                         type: number
+ *                         description: Time spent in seconds
+ *                       focusLostCount:
+ *                         type: number
+ *                         description: Number of times focus was lost
+ *                   performance:
+ *                     type: object
+ *                     properties:
+ *                       score:
+ *                         type: number
+ *                         description: Score achieved for this question
+ *       403:
+ *         description: Forbidden - Test doesn't belong to vendor
+ *       404:
+ *         description: Test not found
+ */
+router.get("/tests/:testId/users/:userId/mcq", auth, checkRole(["vendor"]), getUserMCQSubmissions);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/{userId}/mcq/{mcqId}:
+ *   get:
+ *     summary: Get a specific MCQ submission
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the test
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user
+ *       - in: path
+ *         name: mcqId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the specific MCQ question
+ *     responses:
+ *       200:
+ *         description: MCQ submission retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 questionId:
+ *                   type: string
+ *                 behavior:
+ *                   type: object
+ *                   properties:
+ *                     warnings:
+ *                       type: number
+ *                     tabSwitches:
+ *                       type: number
+ *                     timeSpent:
+ *                       type: number
+ *                     focusLostCount:
+ *                       type: number
+ *                     browserEvents:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           type:
+ *                             type: string
+ *                           timestamp:
+ *                             type: string
+ *                             format: date-time
+ *                           details:
+ *                             type: object
+ *                 performance:
+ *                   type: object
+ *                   properties:
+ *                     score:
+ *                       type: number
+ *                 metadata:
+ *                   type: object
+ *                   properties:
+ *                     browser:
+ *                       type: string
+ *                     os:
+ *                       type: string
+ *                     device:
+ *                       type: string
+ *                     screenResolution:
+ *                       type: string
+ *                     timestamp:
+ *                       type: string
+ *                       format: date-time
+ *       403:
+ *         description: Forbidden - Test doesn't belong to vendor
+ *       404:
+ *         description: MCQ submission not found
+ */
+router.get("/tests/:testId/users/:userId/mcq/:mcqId", auth, checkRole(["vendor"]), getSpecificMCQSubmission);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/{userId}/coding:
+ *   get:
+ *     summary: Get all coding submissions for a user's test
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the test
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user
+ *     responses:
+ *       200:
+ *         description: Coding submissions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   challengeId:
+ *                     type: string
+ *                   behavior:
+ *                     type: object
+ *                     properties:
+ *                       timeSpent:
+ *                         type: number
+ *                       submissionAttempts:
+ *                         type: number
+ *                       errorCount:
+ *                         type: number
+ *                       hintViews:
+ *                         type: number
+ *                   performance:
+ *                     type: object
+ *                     properties:
+ *                       executionTime:
+ *                         type: number
+ *                       memoryUsage:
+ *                         type: number
+ *                       testCasesPassed:
+ *                         type: number
+ *                       totalTestCases:
+ *                         type: number
+ *                       score:
+ *                         type: number
+ *       403:
+ *         description: Forbidden - Test doesn't belong to vendor
+ *       404:
+ *         description: Test not found
+ */
+router.get("/tests/:testId/users/:userId/coding", auth, checkRole(["vendor"]), getUserCodingSubmissions);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/{userId}/coding/{challengeId}:
+ *   get:
+ *     summary: Get a specific coding submission
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the test
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user
+ *       - in: path
+ *         name: challengeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the specific coding challenge
+ *     responses:
+ *       200:
+ *         description: Coding submission retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 challengeId:
+ *                   type: string
+ *                 behavior:
+ *                   type: object
+ *                   properties:
+ *                     timeSpent:
+ *                       type: number
+ *                     submissionAttempts:
+ *                       type: number
+ *                     errorCount:
+ *                       type: number
+ *                     hintViews:
+ *                       type: number
+ *                     browserEvents:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           type:
+ *                             type: string
+ *                           timestamp:
+ *                             type: string
+ *                             format: date-time
+ *                           details:
+ *                             type: object
+ *                 performance:
+ *                   type: object
+ *                   properties:
+ *                     executionTime:
+ *                       type: number
+ *                     memoryUsage:
+ *                       type: number
+ *                     testCasesPassed:
+ *                       type: number
+ *                     totalTestCases:
+ *                       type: number
+ *                     score:
+ *                       type: number
+ *                 metadata:
+ *                   type: object
+ *                   properties:
+ *                     browser:
+ *                       type: string
+ *                     os:
+ *                       type: string
+ *                     device:
+ *                       type: string
+ *                     screenResolution:
+ *                       type: string
+ *                     timestamp:
+ *                       type: string
+ *                       format: date-time
+ *       403:
+ *         description: Forbidden - Test doesn't belong to vendor
+ *       404:
+ *         description: Coding submission not found
+ */
+router.get("/tests/:testId/users/:userId/coding/:challengeId", auth, checkRole(["vendor"]), getSpecificCodingSubmission);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/add:
+ *   post:
+ *     summary: Add users to a test manually
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the test to add users to
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [users]
+ *             properties:
+ *               users:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required: [email, name]
+ *                   properties:
+ *                     email:
+ *                       type: string
+ *                       example: "user@example.com"
+ *                     name:
+ *                       type: string
+ *                       example: "John Doe"
+ *               validUntil:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2024-12-31T23:59:59Z"
+ *               maxAttempts:
+ *                 type: number
+ *                 example: 3
+ *     responses:
+ *       200:
+ *         description: Users processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Users processed successfully"
+ *                 addedUsers:
+ *                   type: array
+ *                   description: List of successfully added users
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       email:
+ *                         type: string
+ *                         example: "newuser@example.com"
+ *                       name:
+ *                         type: string
+ *                         example: "New User"
+ *                 duplicateUsers:
+ *                   type: array
+ *                   description: List of users that were already in the test
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       email:
+ *                         type: string
+ *                         example: "existing@example.com"
+ *                       name:
+ *                         type: string
+ *                         example: "Existing User"
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalProcessed:
+ *                       type: number
+ *                       example: 3
+ *                     added:
+ *                       type: number
+ *                       example: 2
+ *                     duplicates:
+ *                       type: number
+ *                       example: 1
+ *       400:
+ *         description: Bad request - Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Users array is required"
+ *       409:
+ *         description: All users already exist in the test
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "All users already exist in this test"
+ *                 duplicateUsers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       email:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ */
+router.post(
+  "/tests/:testId/users/add",
+  auth,
+  checkRole(["vendor"]),
+  validateTestAccess,
+  addTestUsers
+);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/upload:
+ *   post:
+ *     summary: Add users to a test via CSV upload
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *               validUntil:
+ *                 type: string
+ *                 format: date-time
+ *               maxAttempts:
+ *                 type: number
+ */
+router.post(
+  "/tests/:testId/users/upload",
+  auth,
+  checkRole(["vendor"]),
+  validateTestAccess,
+  uploadTestUsers
+);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/users/remove:
+ *   post:
+ *     summary: Remove users from a test
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               emails:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ */
+router.post(
+  "/tests/:testId/users/remove",
+  auth,
+  checkRole(["vendor"]),
+  validateTestAccess,
+  removeTestUsers
+);
 
 export default router; 

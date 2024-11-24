@@ -11,30 +11,24 @@ const testRegistrationSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  registeredAt: {
-    type: Date,
-    default: Date.now
-  },
   status: {
     type: String,
-    enum: ['registered', 'started', 'completed', 'expired'],
-    default: 'registered'
+    enum: ['pending', 'registered', 'completed', 'expired'],
+    default: 'pending'
   },
   testType: {
     type: String,
-    enum: ['public', 'private', 'practice'],
+    enum: ['practice', 'assessment'],
     required: true
   },
   registrationType: {
     type: String,
-    enum: ['assessment', 'practice'],
+    enum: ['public', 'private'],
     required: true
   },
-  startedAt: Date,
-  completedAt: Date,
-  isVendorAttempt: {
-    type: Boolean,
-    default: false
+  registeredAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
