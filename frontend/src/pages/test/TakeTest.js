@@ -732,6 +732,37 @@ export default function TakeTest() {
     }
   }, [test, isTestCompleted]);
 
+  // Add this new function near the other handlers
+  const handleAnswerUpdate = useCallback((section, newAnswers) => {
+    setAnswers(prev => ({
+      ...prev,
+      [section]: newAnswers
+    }));
+
+    // Update analytics based on section
+    if (section === 'mcq') {
+      updateAnalytics(prev => ({
+        ...prev,
+        mcqMetrics: {
+          ...prev.mcqMetrics,
+          changedAnswers: {
+            ...prev.mcqMetrics.changedAnswers,
+            [Object.keys(newAnswers).length]: Date.now()
+          }
+        }
+      }));
+    } else if (section === 'coding') {
+      updateAnalytics(prev => ({
+        ...prev,
+        codingMetrics: {
+          ...prev.codingMetrics,
+          lastUpdate: Date.now(),
+          totalUpdates: (prev.codingMetrics.totalUpdates || 0) + 1
+        }
+      }));
+    }
+  }, [updateAnalytics]);
+
   // Render Loading State
   if (loading) {
     return (
