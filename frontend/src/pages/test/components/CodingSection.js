@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { 
   Check, X, Play, ChevronLeft, ChevronRight, 
@@ -12,7 +12,6 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const [currentChallenge, setCurrentChallenge] = useState(0);
   const [language, setLanguage] = useState('');
   const [testResults, setTestResults] = useState({});
-  const [isRunning, setIsRunning] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [theme, setTheme] = useState('vs-dark');
@@ -23,7 +22,6 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const [wordWrap, setWordWrap] = useState(true);
   const [autoComplete, setAutoComplete] = useState(true);
   const [editorValue, setEditorValue] = useState('// Write your code here\n');
-  const [isExecuting, setIsExecuting] = useState(false);
   const [executingTests, setExecutingTests] = useState(new Set());
   const [layout, setLayout] = useState({
     leftPanel: 35,
@@ -132,7 +130,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         }
       }
     }
-  }, [challenges, currentChallenge]);
+  }, [challenges, currentChallenge, answers, setAnswers]);
 
   // Handle left panel resize
   const handleLeftResize = useCallback((e) => {
@@ -489,7 +487,6 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     if (!challenge?._id) return null;
 
     const status = submissionStatus[challenge._id];
-    const currentResults = testResults[challenge._id];
     const hasCode = answers[challenge._id]?.code?.trim().length > 0;
     
     if (!hasCode) {

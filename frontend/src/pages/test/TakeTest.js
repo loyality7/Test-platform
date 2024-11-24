@@ -123,7 +123,7 @@ export default function TakeTest() {
     
     setWarningMessage(message);
     setShowWarningModal(true);
-  }, []);
+  }, [updateAnalytics]);
 
   // Update endSession to not include analytics submission
   const endSession = useCallback(async () => {
@@ -556,19 +556,6 @@ export default function TakeTest() {
     } catch (error) {
       setError('Failed to process MCQ submission');
     }
-  };
-
-  // Add this helper function at the top of your component
-  const isAllMCQsAnswered = (mcqAnswers, totalMCQs) => {
-    return Object.keys(mcqAnswers).length === totalMCQs;
-  };
-
-  // When setting answers, ensure the structure is maintained
-  const handleAnswerUpdate = (section, newAnswers) => {
-    setAnswers(prev => ({
-      ...prev,
-      [section]: newAnswers || {}
-    }));
   };
 
   // Add these new state variables at the beginning of the component

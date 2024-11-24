@@ -95,7 +95,7 @@ export default function Proctoring({  onWarning, className }) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
-  }, [isInitialized]);
+  }, [isInitialized, onWarning]);
 
   // Add video metadata handler
   useEffect(() => {
