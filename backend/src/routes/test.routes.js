@@ -57,6 +57,8 @@ import {
 
 import { updateTestType } from '../controllers/test.controller.js';
 import { LANGUAGE_NAMES } from '../constants/languages.js';
+import mongoose from 'mongoose';
+import Submission from '../models/submission.model.js';
 
 
 const router = express.Router();
@@ -2492,6 +2494,52 @@ router.post("/analytics/:testId/coding", auth, postCodingAnalytics);
  *         description: Server error while updating test type
  */
 router.patch('/:testId/type', auth, validateTestAccess, updateTestType);
+
+// Add this route handler
+router.get('/submissions/test/:testId/mcq', auth, async (req, res) => {
+  try {
+    const { testId } = req.params;
+
+    // Validate testId format
+    if (!mongoose.Types.ObjectId.isValid(testId)) {
+      return res.status(400).json({ 
+        error: "Invalid test ID format" 
+      });
+    }
+
+    // Find all MCQ submissions for this test
+    const submissions = await Submission.find({
+      test: testId,
+      type: 'mcq'
+    })
+    .populate('user', 'name email')
+    .sort({ submittedAt: -1 });
+
+    // Transform submissions to include only necessary data
+    const transformedSubmissions = submissions.map(sub => ({
+      _id: sub._id,
+      user: {
+        _id: sub.user._id,
+        name: sub.user.name,
+        email: sub.user.email
+      },
+      score: sub.score,
+      totalMarks: sub.totalMarks,
+      answers: sub.answers,
+      submittedAt: sub.submittedAt,
+      status: sub.status
+    }));
+
+    res.json(transformedSubmissions);
+
+  } catch (error) {
+    console.error('Error fetching MCQ submissions:', error);
+    res.status(500).json({ 
+      error: "Failed to fetch MCQ submissions",
+      details: error.message 
+    });
+  }
+});
 
 export default router;
 
