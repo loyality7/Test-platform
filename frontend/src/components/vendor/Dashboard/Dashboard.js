@@ -19,6 +19,7 @@ import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 // Add these helper functions at the top of your file, after the imports
 const getMetricColor = (title) => {
@@ -514,11 +515,58 @@ const ModernSkillCard = ({ skill, score }) => {
   );
 };
 
+// Add this new component for circular progress
+const CircularProgress = ({ progress, status }) => {
+  const getStatusColors = (status) => {
+    const colors = {
+      'Completed': 'text-green-500 bg-green-50',
+      'In Progress': 'text-blue-500 bg-blue-50',
+      'Pending': 'text-amber-500 bg-amber-50',
+      'Failed': 'text-red-500 bg-red-50',
+      'Expired': 'text-gray-500 bg-gray-50'
+    };
+    return colors[status] || colors['Pending'];
+  };
+
+  const statusColor = getStatusColors(status);
+
+  return (
+    <div className="relative inline-flex">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className={`h-12 w-12 rounded-full ${statusColor} flex items-center justify-center`}
+      >
+        <div className="relative">
+          <CircularProgressbar
+            value={progress}
+            text={`${progress}%`}
+            styles={buildStyles({
+              rotation: 0,
+              strokeLinecap: 'round',
+              textSize: '24px',
+              pathTransitionDuration: 0.5,
+              pathColor: status === 'Completed' ? '#22c55e' :
+                         status === 'In Progress' ? '#3b82f6' :
+                         status === 'Pending' ? '#f59e0b' :
+                         status === 'Failed' ? '#ef4444' : '#6b7280',
+              textColor: status === 'Completed' ? '#22c55e' :
+                        status === 'In Progress' ? '#3b82f6' :
+                        status === 'Pending' ? '#f59e0b' :
+                        status === 'Failed' ? '#ef4444' : '#6b7280',
+              trailColor: '#f3f4f6',
+            })}
+          />
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 // Add this new component for the user table
 const CandidateTable = () => {
   const [selectedStatus, setSelectedStatus] = useState('All Status');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRows, setSelectedRows] = useState([]);
   const [hoveredRow, setHoveredRow] = useState(null);
 
   const candidates = [
@@ -526,7 +574,6 @@ const CandidateTable = () => {
       name: "Yiorgos Avraamu",
       status: "Completed",
       registeredDate: "Registered: Jan 10, 2023",
-      country: "🇺🇸",
       testProgress: {
         percent: 100,
         dateRange: "Jun 11, 2023 - Jul 10, 2023",
@@ -536,14 +583,13 @@ const CandidateTable = () => {
       },
       lastLogin: {
         text: "Last login",
-        time: "10 seconds ago"
+        time: "10s"
       }
     },
     {
       name: "Avram Tarasios",
       status: "In Progress",
       registeredDate: "Registered: Jan 15, 2023",
-      country: "🇧🇷",
       testProgress: {
         percent: 45,
         dateRange: "Jun 11, 2023 - Jul 10, 2023",
@@ -553,14 +599,13 @@ const CandidateTable = () => {
       },
       lastLogin: {
         text: "Currently active",
-        time: "Online now"
+        time: "now"
       }
     },
     {
       name: "Quintin Ed",
       status: "Pending",
       registeredDate: "Registered: Jan 18, 2023",
-      country: "🇮🇳",
       testProgress: {
         percent: 0,
         dateRange: "Jun 15, 2023 - Jul 15, 2023",
@@ -569,14 +614,13 @@ const CandidateTable = () => {
       },
       lastLogin: {
         text: "Last login",
-        time: "1 hour ago"
+        time: "1h"
       }
     },
     {
       name: "Enéas Kwadwo",
       status: "In Progress",
       registeredDate: "Registered: Jan 20, 2023",
-      country: "🇫🇷",
       testProgress: {
         percent: 75,
         dateRange: "Jun 18, 2023 - Jul 18, 2023",
@@ -587,23 +631,6 @@ const CandidateTable = () => {
       lastLogin: {
         text: "Currently active",
         time: "Online now"
-      }
-    },
-    {
-      name: "Sarah Chen",
-      status: "Completed",
-      registeredDate: "Registered: Jan 22, 2023",
-      country: "🇨🇳",
-      testProgress: {
-        percent: 100,
-        dateRange: "Jun 20, 2023 - Jul 20, 2023",
-        testType: "System Design",
-        score: "95/100",
-        timeSpent: "2h 15m"
-      },
-      lastLogin: {
-        text: "Last login",
-        time: "2 hours ago"
       }
     }
   ];
@@ -618,6 +645,17 @@ const CandidateTable = () => {
                          candidate.testProgress.testType.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesSearch;
   });
+
+  // Optional: Add a helper function to format the time
+  const formatTime = (time) => {
+    if (time === "Online now") return "now";
+    return time
+      .replace(" seconds ago", "s")
+      .replace(" minutes ago", "m")
+      .replace(" hours ago", "h")
+      .replace(" days ago", "d")
+      .replace(" weeks ago", "w");
+  };
 
   return (
     <Card className="overflow-hidden">
@@ -702,15 +740,6 @@ const CandidateTable = () => {
         <table className="w-full">
           <thead className="bg-gray-50/90 backdrop-blur-sm sticky top-0 z-10">
             <tr>
-              <th className="w-px py-3 px-4">
-                <input
-                  type="checkbox"
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  onChange={(e) => {
-                    setSelectedRows(e.target.checked ? candidates.map((_, i) => i) : []);
-                  }}
-                />
-              </th>
               <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider py-3 px-4">
                 Candidate
               </th>
@@ -726,7 +755,6 @@ const CandidateTable = () => {
               <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider py-3 px-4">
                 Last Activity
               </th>
-              <th className="w-px"></th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-100">
@@ -740,20 +768,6 @@ const CandidateTable = () => {
                 onHoverStart={() => setHoveredRow(index)}
                 onHoverEnd={() => setHoveredRow(null)}
               >
-                <td className="py-3 px-4">
-                  <input
-                    type="checkbox"
-                    checked={selectedRows.includes(index)}
-                    onChange={(e) => {
-                      setSelectedRows(prev => 
-                        e.target.checked 
-                          ? [...prev, index]
-                          : prev.filter(i => i !== index)
-                      );
-                    }}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </td>
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-3">
                     <motion.div 
@@ -782,10 +796,8 @@ const CandidateTable = () => {
                       <div className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                         {candidate.name}
                       </div>
-                      <div className="text-xs text-gray-500 flex items-center gap-1.5">
-                        <span>{candidate.registeredDate}</span>
-                        <span className="h-1 w-1 rounded-full bg-gray-300" />
-                        <span>{candidate.country}</span>
+                      <div className="text-xs text-gray-500">
+                        {candidate.registeredDate}
                       </div>
                     </div>
                   </div>
@@ -797,36 +809,32 @@ const CandidateTable = () => {
                   </div>
                 </td>
                 <td className="py-3 px-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-grow">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-gray-900">Progress</span>
-                        <span className="text-xs font-medium text-gray-900">{candidate.testProgress.percent}%</span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <motion.div 
-                          className={`h-full rounded-full ${
-                            candidate.status === 'Completed' ? 'bg-green-500' : 
-                            candidate.status === 'Failed' ? 'bg-red-500' :
-                            candidate.status === 'In Progress' ? 'bg-blue-500' : 
-                            'bg-amber-500'
-                          }`}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${candidate.testProgress.percent}%` }}
-                          transition={{ duration: 1, ease: "easeOut" }}
-                        />
-                      </div>
+                  <div className="flex items-center gap-4">
+                    <CircularProgress 
+                      progress={candidate.testProgress.percent} 
+                      status={candidate.status}
+                    />
+                    <div className="flex flex-col">
+                      {candidate.status === 'Completed' && (
+                        <span className="text-sm font-medium text-gray-900">
+                          {candidate.testProgress.score}
+                        </span>
+                      )}
+                      {candidate.status === 'In Progress' && (
+                        <span className="text-sm text-gray-500">
+                          {candidate.testProgress.timeSpent} spent
+                        </span>
+                      )}
+                      {candidate.status === 'Pending' && (
+                        <span className="text-sm text-gray-500">
+                          Not started
+                        </span>
+                      )}
                     </div>
                   </div>
                 </td>
                 <td className="py-3 px-4">
-                  <span className={`px-3 py-1 inline-flex items-center gap-1.5 text-xs font-medium rounded-full ${getStatusStyles(candidate.status)}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${
-                      candidate.status === 'Completed' ? 'bg-green-500' :
-                      candidate.status === 'Failed' ? 'bg-red-500' :
-                      candidate.status === 'In Progress' ? 'bg-blue-500 animate-pulse' :
-                      'bg-amber-500'
-                    }`} />
+                  <span className={`px-3 py-1 inline-flex text-xs font-medium rounded-full ${getStatusStyles(candidate.status)}`}>
                     {candidate.status}
                   </span>
                 </td>
@@ -836,16 +844,9 @@ const CandidateTable = () => {
                       <Clock className="h-4 w-4 text-gray-400" />
                     </div>
                     <div>
-                      <div className="text-sm text-gray-900">{candidate.lastLogin.time}</div>
+                      <div className="text-sm text-gray-900">{formatTime(candidate.lastLogin.time)}</div>
                       <div className="text-xs text-gray-500">{candidate.lastLogin.text}</div>
                     </div>
-                  </div>
-                </td>
-                <td className="py-3 px-4 w-px">
-                  <div className="relative">
-                    <button className="invisible group-hover:visible p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-all">
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
                   </div>
                 </td>
               </motion.tr>
@@ -961,6 +962,7 @@ const Dashboard = () => {
   const auth = useAuth();
   const { isAuthenticated, token } = auth;
   const [activeTimeRange, setActiveTimeRange] = useState('1M');
+  const navigate = useNavigate();
 
   // Assessment platform metrics
   const topMetrics = [
@@ -1130,6 +1132,7 @@ const Dashboard = () => {
                   <motion.button 
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate('/vendor/tests/create')}
                     className="w-full p-4 rounded-xl
                       bg-blue-50/50 hover:bg-blue-50
                       border border-blue-100
@@ -1249,4 +1252,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-

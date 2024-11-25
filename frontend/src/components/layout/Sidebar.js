@@ -46,8 +46,7 @@ const Sidebar = ({ isOpen, setIsOpen, onLogout }) => {
         { 
           label: "Overview",  
           path: "/vendor/dashboard", 
-          icon: Activity,
-          badge: { text: "5", color: "success" } 
+          icon: Activity
         },
         { 
           label: "Statistics", 
