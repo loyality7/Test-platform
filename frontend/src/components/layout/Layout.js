@@ -124,13 +124,9 @@ const Layout = ({ children }) => {
         </div>
 
         {/* Main Content */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-6"
-        >
+        <div className="p-6">
           {children}
-        </motion.div>
+        </div>
       </div>
     </div>
   );

@@ -872,6 +872,91 @@ const CandidateTable = () => {
   );
 };
 
+// Update the EnhancedMetricCard component to remove the initial animation
+const EnhancedMetricCard = ({ metric }) => {
+  const getIcon = (title) => {
+    const icons = {
+      'Total Tests': FileText,
+      'Active Candidates': Users,
+      'Pass Rate': Award,
+      'New Discussions': MessageSquare
+    };
+    return icons[title] || FileText;
+  };
+
+  const IconComponent = getIcon(metric.title);
+
+  return (
+    <div className="group">
+      <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg">
+        <CardContent className="p-6 relative">
+          {/* Animated Background Pattern */}
+          <div 
+            className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity"
+            style={{ 
+              background: `radial-gradient(circle at 100% 100%, ${getMetricColor(metric.title)}20 0%, transparent 50%)`,
+              transform: 'scale(2)',
+            }}
+          />
+
+          {/* Header with Icon */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div 
+                className={`p-2.5 rounded-xl ${getMetricBgColor(metric.title)}`}
+              >
+                <IconComponent className={`h-5 w-5 ${getMetricIconColor(metric.title)}`} />
+              </div>
+              <span className="font-medium text-gray-800">{metric.title}</span>
+            </div>
+            
+            {/* Trend Indicator */}
+            {metric.trend && (
+              <div
+                className={`flex items-center gap-1 ${
+                  metric.trend > 0 ? 'text-green-500' : 'text-red-500'
+                }`}
+              >
+                <TrendingUp className={`h-4 w-4 ${metric.trend < 0 && 'rotate-180'}`} />
+                <span className="text-sm font-medium">{Math.abs(metric.trend)}%</span>
+              </div>
+            )}
+          </div>
+
+          {/* Main Value */}
+          <div className="mb-4">
+            <div className={`text-3xl font-bold ${getMetricValueColor(metric.title)}`}>
+              {metric.value}
+            </div>
+            <span className="text-sm text-gray-500">{metric.subtitle}</span>
+          </div>
+
+          {/* Additional Details */}
+          <div className="pt-4 border-t border-gray-100">
+            <div className="grid grid-cols-2 gap-4">
+              {metric.details.map((detail, idx) => (
+                <div key={idx} className="text-sm">
+                  <div className="text-gray-500">{detail.label}</div>
+                  <div className="font-semibold text-gray-900">{detail.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Interactive Progress Bar */}
+          <div className="mt-4 h-1.5 bg-gray-100 rounded-full overflow-hidden"
+            whileHover={{ height: '8px' }}
+          >
+            <div
+              className={`h-full rounded-full ${getMetricProgressColor(metric.title)}`}
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const auth = useAuth();
   const { isAuthenticated, token } = auth;
@@ -987,109 +1072,6 @@ const Dashboard = () => {
       ]
     }
   ];
-
-  // Enhanced MetricCard component
-  const EnhancedMetricCard = ({ metric }) => {
-    // Add this function inside the component
-    const getIcon = (title) => {
-      const icons = {
-        'Total Tests': FileText,
-        'Active Candidates': Users,
-        'Pass Rate': Award,
-        'New Discussions': MessageSquare
-      };
-      return icons[title] || FileText;
-    };
-
-    // Get the appropriate icon component
-    const IconComponent = getIcon(metric.title);
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        whileHover={{ y: -2, transition: { duration: 0.2 } }}
-        className="group"
-      >
-        <Card className="overflow-hidden transition-all duration-200 hover:shadow-lg">
-          <CardContent className="p-6 relative">
-            {/* Animated Background Pattern */}
-            <div 
-              className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity"
-              style={{ 
-                background: `radial-gradient(circle at 100% 100%, ${getMetricColor(metric.title)}20 0%, transparent 50%)`,
-                transform: 'scale(2)',
-              }}
-            />
-
-            {/* Header with Icon */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <motion.div 
-                  whileHover={{ rotate: 15 }}
-                  className={`p-2.5 rounded-xl ${getMetricBgColor(metric.title)}`}
-                >
-                  <IconComponent className={`h-5 w-5 ${getMetricIconColor(metric.title)}`} />
-                </motion.div>
-                <span className="font-medium text-gray-800">{metric.title}</span>
-              </div>
-              
-              {/* Trend Indicator */}
-              {metric.trend && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className={`flex items-center gap-1 ${
-                    metric.trend > 0 ? 'text-green-500' : 'text-red-500'
-                  }`}
-                >
-                  <TrendingUp className={`h-4 w-4 ${metric.trend < 0 && 'rotate-180'}`} />
-                  <span className="text-sm font-medium">{Math.abs(metric.trend)}%</span>
-                </motion.div>
-              )}
-            </div>
-
-            {/* Main Value */}
-            <div className="mb-4">
-              <motion.div 
-                className={`text-3xl font-bold ${getMetricValueColor(metric.title)}`}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-              >
-                {metric.value}
-              </motion.div>
-              <span className="text-sm text-gray-500">{metric.subtitle}</span>
-            </div>
-
-            {/* Additional Details */}
-            <div className="pt-4 border-t border-gray-100">
-              <div className="grid grid-cols-2 gap-4">
-                {metric.details.map((detail, idx) => (
-                  <div key={idx} className="text-sm">
-                    <div className="text-gray-500">{detail.label}</div>
-                    <div className="font-semibold text-gray-900">{detail.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Interactive Progress Bar */}
-            <motion.div 
-              className="mt-4 h-1.5 bg-gray-100 rounded-full overflow-hidden"
-              whileHover={{ height: '8px' }}
-            >
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min(100, Number(metric.value) / 3)}%` }}
-                className={`h-full rounded-full ${getMetricProgressColor(metric.title)}`}
-              />
-            </motion.div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    );
-  };
 
   return (
     <Layout>

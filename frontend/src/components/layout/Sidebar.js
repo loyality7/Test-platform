@@ -145,41 +145,34 @@ const Sidebar = ({ isOpen, setIsOpen, onLogout }) => {
           )}
         </motion.button>
         
-        <AnimatePresence>
-          {hasChildren && isOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-1 space-y-1"
-            >
-              {item.children.map((child, index) => (
-                <Link
-                  key={index}
-                  to={child.path}
-                  className={`flex items-center pl-8 pr-3 py-2 text-sm rounded-md
-                    ${location.pathname === child.path 
-                      ? 'bg-emerald-50 text-emerald-600' 
-                      : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  {child.icon && (
-                    <child.icon className={`h-3.5 w-3.5 mr-2.5 ${
-                      location.pathname === child.path 
-                        ? 'text-emerald-500' 
-                        : 'text-gray-400'
-                    }`} />
-                  )}
-                  <span>{child.label}</span>
-                  {child.badge && (
-                    <span className="ml-auto px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-600 rounded-full">
-                      {child.badge.text}
-                    </span>
-                  )}
-                </Link>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {hasChildren && isOpen && (
+          <div className="mt-1 space-y-1">
+            {item.children.map((child, index) => (
+              <Link
+                key={index}
+                to={child.path}
+                className={`flex items-center pl-8 pr-3 py-2 text-sm rounded-md
+                  ${location.pathname === child.path 
+                    ? 'bg-emerald-50 text-emerald-600' 
+                    : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                {child.icon && (
+                  <child.icon className={`h-3.5 w-3.5 mr-2.5 ${
+                    location.pathname === child.path 
+                      ? 'text-emerald-500' 
+                      : 'text-gray-400'
+                  }`} />
+                )}
+                <span>{child.label}</span>
+                {child.badge && (
+                  <span className="ml-auto px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-600 rounded-full">
+                    {child.badge.text}
+                  </span>
+                )}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
