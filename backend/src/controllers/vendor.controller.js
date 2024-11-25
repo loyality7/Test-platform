@@ -1105,4 +1105,64 @@ export const getSpecificCodingSubmission = async (req, res) => {
     console.error('Error in getSpecificCodingSubmission:', error);
     res.status(500).json({ error: error.message });
   }
+};
+
+export const addUsersToTest = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { users, validUntil, maxAttempts } = req.body;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to modify it" 
+      });
+    }
+
+    // Create test invitations for each user
+    const invitations = await Promise.all(
+      users.map(async (user) => {
+        const invitation = await TestInvitation.create({
+          test: testId,
+          email: user.email,
+          name: user.name,
+          validUntil: new Date(validUntil),
+          maxAttempts,
+          vendor: req.user._id,
+          status: 'pending'
+        });
+        
+        // TODO: Send email notification to user
+        
+        return invitation;
+      })
+    );
+
+    // Update test's access control list
+    await Test.findByIdAndUpdate(testId, {
+      $addToSet: {
+        'accessControl.allowedUsers': users.map(user => ({
+          email: user.email,
+          name: user.name
+        }))
+      }
+    });
+
+    res.status(201).json({
+      message: 'Users added successfully',
+      invitations
+    });
+
+  } catch (error) {
+    console.error('Error in addUsersToTest:', error);
+    res.status(500).json({ 
+      error: 'Failed to add users to test',
+      message: error.message 
+    });
+  }
 }; 

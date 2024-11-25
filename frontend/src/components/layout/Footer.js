@@ -10,7 +10,7 @@ const Footer = () => {
         <div className="text-center">
           <Link to="/" className="flex items-center justify-center space-x-2 mb-4">
             <img 
-              src="/logo.png"
+              src="https://res.cloudinary.com/dfdtxogcl/images/c_scale,w_248,h_180,dpr_1.25/f_auto,q_auto/v1706606519/Picture1_215dc6b/Picture1_215dc6b.png"
               alt="Test Platform Logo"
               className="w-8 h-8 object-contain"
             />

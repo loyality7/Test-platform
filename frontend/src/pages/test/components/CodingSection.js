@@ -741,23 +741,16 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const handleLanguageChange = (newLanguage) => {
     setLanguage(newLanguage);
     
-    // Preserve existing code unless explicitly resetting
-    if (challenge?._id && answers[challenge._id]?.code) {
+    if (challenge?._id) {
+      // Get the default code for the new language
+      const defaultCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || '// Write your code here\n';
+      
+      // Update editor value and answers
+      setEditorValue(defaultCode);
       setAnswers(prev => ({
         ...prev,
         [challenge._id]: {
-          ...prev[challenge._id],
-          language: newLanguage
-        }
-      }));
-    } else {
-      // Only use default code if there's no existing code
-      const visibleCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || '';
-      setEditorValue(visibleCode);
-      setAnswers(prev => ({
-        ...prev,
-        [challenge._id]: {
-          code: visibleCode,
+          code: defaultCode,
           language: newLanguage
         }
       }));
