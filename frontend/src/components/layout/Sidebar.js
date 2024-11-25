@@ -8,6 +8,31 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Add this style block at the top of your component
+const scrollbarStyles = `
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.3s ease;
+  }
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 4px;
+  }
+  .sidebar-scroll:hover {
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+  .sidebar-scroll:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+  }
+`;
+
 const Sidebar = ({ isOpen, setIsOpen, onLogout }) => {
   const [openMenus, setOpenMenus] = useState({});
   const location = useLocation();
@@ -183,6 +208,8 @@ const Sidebar = ({ isOpen, setIsOpen, onLogout }) => {
       animate={{ x: isOpen ? 0 : -256 }}
       className="fixed inset-y-0 left-0 bg-white border-r border-gray-100 w-64 z-30"
     >
+      <style jsx global>{scrollbarStyles}</style>
+      
       <div className="h-full flex flex-col">
         {/* Header */}
         <div className="px-4 py-4 flex items-center border-b border-gray-100">
@@ -194,8 +221,8 @@ const Sidebar = ({ isOpen, setIsOpen, onLogout }) => {
           </span>
         </div>
         
-        {/* Menu Items with thinner scrollbar */}
-        <div className="flex-1 py-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
+        {/* Updated Menu Items container with new scrollbar class */}
+        <div className="flex-1 py-4 overflow-y-auto sidebar-scroll">
           <div className="space-y-1 px-3">
             {menuItems.map((item, index) => (
               <MenuItem key={index} item={item} />

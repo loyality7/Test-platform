@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { QueryClient, QueryClientProvider } from 'react-query';
+import { Toaster } from 'react-hot-toast';
 
 // Import pages
 import Home from './pages/home/Home';
@@ -15,20 +16,14 @@ import Profile from './pages/profile/profile';
 // Import dashboard components
 import UserDashboard from './components/dashboard/candidate/Dashboard';
 import AdminDashboard from './components/dashboard/admin/Dashboard';
-
-// Import vendor pages
 import VendorDashboard from './components/vendor/Dashboard/Dashboard';
-import VendorTests from './pages/vendor/Tests';
-import VendorAnalytics from './pages/vendor/Analytics';
-import VendorCandidates from './pages/vendor/Candidates';
-import VendorInvitations from './pages/vendor/Invitations';
-import VendorProfile from './pages/vendor/Profile';
-import VendorReports from './pages/vendor/Reports';
-import CreateTest from './components/test/CreateTest';
+import CreateTest from './components/vendor/Assessments/CreateTest';
 import SharedTest from './pages/test/SharedTest';
 import TakeTest from './pages/test/TakeTest';
 import TestCompleted from './pages/test/TestCompleted';
 import Proctoring from './pages/test/Proctoring';
+
+// Import vendor components
 import Statistics from './components/vendor/Dashboard/Statistics';
 import Reports from './components/vendor/Dashboard/Reports';
 import AllTests from './components/vendor/Assessments/AllTests';
@@ -53,13 +48,13 @@ import Billing from './components/vendor/Payments/Billing';
 import Invoices from './components/vendor/Payments/Invoices';
 import Subscription from './components/vendor/Payments/Subscription';
 import PaymentHistory from './components/vendor/Payments/PaymentHistory';
+
 const queryClient = new QueryClient();
 
 // Create a wrapper component to handle header visibility
 const AppContent = () => {
   const location = useLocation();
   
-  // Define routes where layout should be hidden
   const noLayoutRoutes = [
     '/test/take',
     '/test/shared',
@@ -72,7 +67,6 @@ const AppContent = () => {
     '/reset-password'
   ];
 
-  // Check if current path starts with any of the noLayoutRoutes
   const shouldShowLayout = !noLayoutRoutes.some(route => 
     location.pathname.startsWith(route)
   );
@@ -87,7 +81,7 @@ const AppContent = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         
-        {/* Protected routes with Layout */}
+        {/* Protected vendor routes */}
         <Route 
           path="/vendor/*" 
           element={
@@ -102,11 +96,6 @@ const AppContent = () => {
                   <Route path="tests/templates" element={<Templates />} />
                   <Route path="tests/questions" element={<QuestionBank />} />
                   <Route path="tests/archive" element={<Archive />} />
-                  <Route path="analytics" element={<VendorAnalytics />} />
-                  <Route path="candidates" element={<VendorCandidates />} />
-                  <Route path="invitations" element={<VendorInvitations />} />
-                  <Route path="profile" element={<VendorProfile />} />
-                  <Route path="reports" element={<VendorReports />} />
                   <Route path="candidates/active" element={<ActiveCandidates />} />
                   <Route path="candidates/completed" element={<CompletedCandidates />} />
                   <Route path="candidates/pending" element={<PendingCandidates />} />
@@ -131,7 +120,7 @@ const AppContent = () => {
             />
           } 
         />
-        {/* ... other protected routes */}
+        {/* ... other protected routes ... */}
       </Routes>
     </div>
   );
@@ -149,6 +138,7 @@ const App = () => {
           <AppContent />
         </AuthProvider>
       </Router>
+      <Toaster position="top-right" />
     </QueryClientProvider>
   );
 };
