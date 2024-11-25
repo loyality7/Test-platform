@@ -1234,25 +1234,49 @@ export const getUserTestResults = async (req, res) => {
       return res.status(404).json({ error: "No submission found for this user" });
     }
 
-    // Calculate MCQ details with fixed scoring logic
+    // Calculate MCQ details with correct marking scheme
     const mcqDetails = submission.mcqSubmission?.answers?.map(answer => {
       const question = submission.test.mcqs.find(q => 
         q._id.toString() === answer.questionId.toString()
       );
       
-      // Fix for scoring logic
+      // Initialize scoring variables
       let isCorrect = false;
+      let marks = 0;
+      const maxMarks = question?.marks || 0;
+
       if (question.answerType === 'single') {
         // For single answer questions
-        isCorrect = answer.selectedOptions.length === 1 && 
-                   answer.selectedOptions[0] === question.correctOptions[0];
+        if (answer.selectedOptions.length === 1) {
+          if (question.correctOptions.length === 1 && 
+              answer.selectedOptions[0] === question.correctOptions[0]) {
+            // Give full marks if there's only one correct option and user selected it
+            marks = maxMarks;
+            isCorrect = true;
+          } else if (question.correctOptions.includes(answer.selectedOptions[0])) {
+            // Give 2 marks if selected option is one of multiple correct options
+            marks = 2;
+            isCorrect = true;
+          }
+        }
       } else {
         // For multiple answer questions
-        isCorrect = 
-          // Check if all selected options are correct
-          answer.selectedOptions.every(opt => question.correctOptions.includes(opt)) &&
-          // Check if all correct options are selected
-          question.correctOptions.every(opt => answer.selectedOptions.includes(opt));
+        const correctSelectedCount = answer.selectedOptions.filter(opt => 
+          question.correctOptions.includes(opt)
+        ).length;
+
+        if (correctSelectedCount > 0) {
+          if (correctSelectedCount === question.correctOptions.length && 
+              answer.selectedOptions.length === question.correctOptions.length) {
+            // Give full marks if all correct options are selected
+            marks = maxMarks;
+            isCorrect = true;
+          } else {
+            // Give 2 marks if at least one correct option is selected
+            marks = 2;
+            isCorrect = true;
+          }
+        }
       }
 
       return {
@@ -1261,11 +1285,12 @@ export const getUserTestResults = async (req, res) => {
         selectedOptions: answer.selectedOptions,
         correctOptions: question?.correctOptions,
         isCorrect: isCorrect,
-        marks: isCorrect ? question?.marks : 0,
-        maxMarks: question?.marks,
+        marks: marks,
+        maxMarks: maxMarks,
         timeTaken: answer.timeTaken,
         submittedAt: answer.submittedAt,
-        answerType: question?.answerType
+        answerType: question?.answerType,
+        partiallyCorrect: marks > 0 && marks < maxMarks
       };
     }) || [];
 
