@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { apiService } from '../../../services/api';
 import { toast } from 'react-hot-toast';
-import { LANGUAGE_NAMES } from '../../../constants/languages';
 
 export default function CodingSection({ challenges, answers, setAnswers, onSubmitCoding, setAnalytics }) {
   // Move ALL state declarations to the top
@@ -103,54 +102,36 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     }
   }, []);
 
-  // Update useEffect for challenge changes
+  // Update useEffect for challenge changes to use the API data
   useEffect(() => {
     if (challenges?.length > 0) {
       const challenge = challenges[currentChallenge];
       if (challenge?.allowedLanguages?.length > 0) {
-        const existingAnswer = answers[challenge._id];
+        const defaultLanguage = challenge.allowedLanguages[0].toLowerCase();
+        setLanguage(defaultLanguage);
         
-        if (existingAnswer) {
+        // Initialize answers if they don't exist
+        const existingAnswer = answers[challenge._id];
+        if (!existingAnswer) {
+          const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || '// Write your code here\n';
+          setEditorValue(visibleCode);
+          
+          const newAnswers = {
+            ...answers,
+            [challenge._id]: {
+              code: visibleCode,
+              language: defaultLanguage
+            }
+          };
+          setAnswers(newAnswers);
+          console.log('Initialized answers:', newAnswers);
+        } else {
           setEditorValue(existingAnswer.code);
           setLanguage(existingAnswer.language);
-        } else {
-          // Set the first allowed language as default instead of leaving it empty
-          const defaultLanguage = challenge.allowedLanguages[0];
-          const normalizedLanguage = typeof defaultLanguage === 'number' 
-            ? LANGUAGE_NAMES[defaultLanguage]?.toLowerCase() 
-            : defaultLanguage.toLowerCase();
-          
-          setLanguage(normalizedLanguage);
-          // Get default code for the selected language
-          const defaultImplementation = challenge.languageImplementations?.[normalizedLanguage];
-          const defaultCode = defaultImplementation?.visibleCode || getDefaultCodeForLanguage(normalizedLanguage);
-          setEditorValue(defaultCode);
-          
-          // Update answers state
-          setAnswers(prev => ({
-            ...prev,
-            [challenge._id]: {
-              code: defaultCode,
-              language: normalizedLanguage
-            }
-          }));
         }
       }
     }
   }, [challenges, currentChallenge, answers, setAnswers]);
-
-  // Add this helper function to provide default code templates
-  const getDefaultCodeForLanguage = (language) => {
-    const templates = {
-      python: '# Write your Python code here\n\ndef solution():\n    pass\n',
-      javascript: '// Write your JavaScript code here\n\nfunction solution() {\n    \n}\n',
-      java: 'public class Solution {\n    public static void main(String[] args) {\n        // Write your Java code here\n    }\n}\n',
-      cpp: '#include <iostream>\n\nint main() {\n    // Write your C++ code here\n    return 0;\n}\n',
-      c: '#include <stdio.h>\n\nint main() {\n    // Write your C code here\n    return 0;\n}\n',
-      // Add more language templates as needed
-    };
-    return templates[language] || '// Write your code here\n';
-  };
 
   // Handle left panel resize
   const handleLeftResize = useCallback((e) => {
@@ -756,30 +737,31 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     );
   };
 
-  // Update handleLanguageChange
+  // Update handleLanguageChange to preserve user code when changing languages
   const handleLanguageChange = (newLanguage) => {
-    if (!challenge?._id) return;
-
-    const normalizedLanguage = newLanguage.toLowerCase();
-    const existingImplementation = challenge.languageImplementations?.[normalizedLanguage];
+    setLanguage(newLanguage);
     
-    let newCode;
-    if (existingImplementation?.visibleCode) {
-      newCode = existingImplementation.visibleCode;
+    // Preserve existing code unless explicitly resetting
+    if (challenge?._id && answers[challenge._id]?.code) {
+      setAnswers(prev => ({
+        ...prev,
+        [challenge._id]: {
+          ...prev[challenge._id],
+          language: newLanguage
+        }
+      }));
     } else {
-      newCode = getDefaultCodeForLanguage(normalizedLanguage);
+      // Only use default code if there's no existing code
+      const visibleCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || '';
+      setEditorValue(visibleCode);
+      setAnswers(prev => ({
+        ...prev,
+        [challenge._id]: {
+          code: visibleCode,
+          language: newLanguage
+        }
+      }));
     }
-
-    setEditorValue(newCode);
-    setLanguage(normalizedLanguage);
-    
-    setAnswers(prev => ({
-      ...prev,
-      [challenge._id]: {
-        code: newCode,
-        language: normalizedLanguage
-      }
-    }));
   };
 
   // Add this function near the top of the component, after state declarations
@@ -792,37 +774,6 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     } catch (error) {
       console.error('Error updating local analytics:', error);
     }
-  };
-
-  // Update language selection rendering
-  const renderLanguageSelector = () => {
-    if (!challenge?.allowedLanguages) return null;
-
-    return (
-      <select
-        value={language}
-        onChange={(e) => handleLanguageChange(e.target.value)}
-        className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
-      >
-        <option value="" disabled>Select Language</option>
-        {challenge.allowedLanguages.map(lang => {
-          const langName = typeof lang === 'number' 
-            ? LANGUAGE_NAMES[lang]?.toLowerCase()
-            : lang.toLowerCase();
-          
-          return (
-            <option key={langName} value={langName}>
-              {typeof lang === 'number' ? LANGUAGE_NAMES[lang] : lang}
-            </option>
-          );
-        })}
-      </select>
-    );
-  };
-
-  // Helper function to get language name
-  const getLanguageName = (lang) => {
-    return typeof lang === 'number' ? LANGUAGE_NAMES[lang]?.toLowerCase() : lang.toLowerCase();
   };
 
   return (
@@ -840,7 +791,15 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           </div>
 
           <div className="flex items-center gap-2">
-            {renderLanguageSelector()}
+            <select
+              value={language}
+              onChange={(e) => handleLanguageChange(e.target.value)}
+              className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
+            >
+              {challenge?.allowedLanguages?.map(lang => (
+                <option key={lang} value={lang.toLowerCase()}>{lang}</option>
+              ))}
+            </select>
 
             <div className="flex items-center gap-1">
               <button

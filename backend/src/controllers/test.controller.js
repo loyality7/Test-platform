@@ -466,7 +466,7 @@ export const addMCQs = async (req, res) => {
     test.mcqs.push(...mcqsToAdd);
     
     // Recalculate total marks
-    test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0)  + 
+    test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0) + 
                       (test.codingChallenges?.reduce((sum, challenge) => sum + challenge.marks, 0) || 0);
     test.passingMarks = Math.ceil(test.totalMarks * 0.4);
     
@@ -520,7 +520,7 @@ export const updateMCQ = async (req, res) => {
     // Recalculate total marks if marks were updated
     if (req.body.marks) {
       test.totalMarks = test.mcqs.reduce((sum, mcq) => sum + mcq.marks, 0) +
-                       (test.codingChallenges?.reduce((sum, ch) => sum + ch.marks, 0) || 0;
+                       (test.codingChallenges?.reduce((sum, ch) => sum + ch.marks, 0) || 0);
       test.passingMarks = Math.ceil(test.totalMarks * 0.4);
     }
 
@@ -1689,24 +1689,42 @@ export const getTestByUuid = async (req, res) => {
         difficulty: mcq.difficulty,
         answerType: mcq.answerType
       })),
-      codingChallenges: test.codingChallenges?.map(challenge => ({
-        _id: challenge._id,
-        title: challenge.title,
-        description: challenge.description,
-        problemStatement: challenge.problemStatement,
-        constraints: challenge.constraints,
-        allowedLanguages: challenge.allowedLanguages, // Keep original languages
-        languageImplementations: challenge.languageImplementations, // Keep original implementations
-        marks: challenge.marks,
-        timeLimit: challenge.timeLimit,
-        memoryLimit: challenge.memoryLimit,
-        difficulty: challenge.difficulty,
-        testCases: challenge.testCases?.filter(tc => tc.isVisible).map(tc => ({
-          input: tc.input,
-          output: tc.output,
-          explanation: tc.explanation
-        }))
-      }))
+      codingChallenges: test.codingChallenges?.map(challenge => {
+        // Convert language IDs to names
+        const allowedLanguages = challenge.allowedLanguages.map(langId => {
+          const languageName = Object.entries(LANGUAGE_IDS).find(([name, id]) => id === langId)?.[0];
+          return languageName || langId;
+        });
+
+        // Convert language implementations keys from IDs to names
+        const languageImplementations = {};
+        Object.entries(challenge.languageImplementations).forEach(([langId, impl]) => {
+          const languageName = Object.entries(LANGUAGE_IDS).find(([name, id]) => id === langId)?.[0];
+          if (languageName) {
+            languageImplementations[languageName] = impl;
+          }
+        });
+
+        return {
+          _id: challenge._id,
+          title: challenge.title,
+          description: challenge.description,
+          problemStatement: challenge.problemStatement,
+          constraints: challenge.constraints,
+          allowedLanguages,
+          languageImplementations,
+          marks: challenge.marks,
+          timeLimit: challenge.timeLimit,
+          memoryLimit: challenge.memoryLimit,
+          difficulty: challenge.difficulty,
+          testCases: challenge.testCases?.filter(tc => tc.isVisible).map(tc => ({
+            input: tc.input,
+            output: tc.output,
+            explanation: tc.explanation
+          })),
+          tags: challenge.tags
+        };
+      })
     };
 
     res.json({
