@@ -114,27 +114,9 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           setEditorValue(existingAnswer.code);
           setLanguage(existingAnswer.language);
         } else {
-          // Get the first allowed language and properly convert it
-          const firstAllowedLanguage = challenge.allowedLanguages[0];
-          const defaultLanguage = typeof firstAllowedLanguage === 'number' 
-            ? LANGUAGE_NAMES[firstAllowedLanguage]?.toLowerCase()
-            : firstAllowedLanguage.toLowerCase();
-
-          if (defaultLanguage) {
-            const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || 
-                               getDefaultCodeForLanguage(defaultLanguage);
-            
-            setEditorValue(visibleCode);
-            setLanguage(defaultLanguage);
-            
-            setAnswers(prev => ({
-              ...prev,
-              [challenge._id]: {
-                code: visibleCode,
-                language: defaultLanguage
-              }
-            }));
-          }
+          // Clear language and set placeholder text
+          setLanguage('');
+          setEditorValue('// Please select a programming language to begin\n');
         }
       }
     }
@@ -805,6 +787,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         onChange={(e) => handleLanguageChange(e.target.value)}
         className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
       >
+        <option value="" disabled>Select Language</option>
         {challenge.allowedLanguages.map(lang => {
           const langName = typeof lang === 'number' 
             ? LANGUAGE_NAMES[lang]?.toLowerCase()
