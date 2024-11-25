@@ -894,7 +894,8 @@ router.get("/:uuid/take", auth, async (req, res) => {
 
     // Transform coding challenges to use language names instead of IDs
     const transformedCodingChallenges = test.codingChallenges.map(challenge => {
-      const transformedChallenge = challenge.toObject();
+      // Convert to plain object to remove Mongoose document methods
+      const transformedChallenge = JSON.parse(JSON.stringify(challenge));
       
       // Convert language IDs to names in allowedLanguages array
       transformedChallenge.allowedLanguages = challenge.allowedLanguages.map(langId => 
@@ -903,9 +904,19 @@ router.get("/:uuid/take", auth, async (req, res) => {
 
       // Convert language IDs to names in languageImplementations object
       const newImplementations = {};
-      Object.entries(challenge.languageImplementations).forEach(([langId, impl]) => {
+      // Handle Mongoose Map structure
+      const implementations = challenge.languageImplementations instanceof Map ? 
+        Object.fromEntries(challenge.languageImplementations) : 
+        challenge.languageImplementations;
+
+      Object.entries(implementations).forEach(([langId, impl]) => {
         const languageName = LANGUAGE_NAMES[langId] || langId;
-        newImplementations[languageName] = impl;
+        // Preserve the implementation structure including _id
+        newImplementations[languageName] = {
+          visibleCode: impl.visibleCode,
+          invisibleCode: impl.invisibleCode,
+          _id: impl._id
+        };
       });
       transformedChallenge.languageImplementations = newImplementations;
 
