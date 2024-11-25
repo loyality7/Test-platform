@@ -49,6 +49,11 @@ export const addTestUsers = async (req, res) => {
       };
     }
 
+    // Ensure allowedUsers is an array
+    if (!Array.isArray(test.accessControl.allowedUsers)) {
+      test.accessControl.allowedUsers = [];
+    }
+
     for (const userData of users) {
       const { email, name } = userData;
       
@@ -58,7 +63,7 @@ export const addTestUsers = async (req, res) => {
       }
 
       // Check if user is already in allowed users
-      const isExistingUser = test.accessControl.allowedUsers?.some(
+      const isExistingUser = test.accessControl.allowedUsers.some(
         user => user.email === email
       );
 
@@ -68,13 +73,16 @@ export const addTestUsers = async (req, res) => {
         continue;
       }
 
-      // Add user to allowed users
-      test.accessControl.allowedUsers.push({
+      // Create new user object
+      const newUser = {
         email,
         name,
         addedAt: new Date()
-      });
-      test.accessControl.currentUserCount++;
+      };
+
+      // Add user to allowed users
+      test.accessControl.allowedUsers.push(newUser);
+      test.accessControl.currentUserCount = (test.accessControl.currentUserCount || 0) + 1;
       
       results.addedUsers.push({ email, name });
       results.summary.added++;
@@ -88,6 +96,8 @@ export const addTestUsers = async (req, res) => {
       test.accessControl.maxAttempts = maxAttempts;
     }
 
+    // Mark the accessControl field as modified
+    test.markModified('accessControl');
     await test.save();
 
     if (results.summary.added === 0 && results.summary.duplicates > 0) {
