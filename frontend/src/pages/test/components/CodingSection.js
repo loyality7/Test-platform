@@ -132,6 +132,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         // Check if there's an existing answer with a language
         const existingAnswer = answers[challenge._id];
         
+        
         if (existingAnswer?.language) {
           // Use existing language if available
           console.log('Using existing language:', existingAnswer.language);
