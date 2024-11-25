@@ -523,6 +523,7 @@ router.get('/test/:testId/mcq/:questionId', auth, checkRole(['admin', 'vendor'])
  *       500:
  *         description: Error retrieving test results
  */
+router.get('/test/:testId/results', auth, checkRole(['admin', 'vendor']), getTestResults);
 
 /**
  * @swagger
