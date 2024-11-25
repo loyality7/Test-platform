@@ -114,9 +114,26 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           setEditorValue(existingAnswer.code);
           setLanguage(existingAnswer.language);
         } else {
-          // Clear language and set placeholder text
-          setLanguage('');
-          setEditorValue('// Please select a programming language to begin\n');
+          // Set the first allowed language as default instead of leaving it empty
+          const defaultLanguage = challenge.allowedLanguages[0];
+          const normalizedLanguage = typeof defaultLanguage === 'number' 
+            ? LANGUAGE_NAMES[defaultLanguage]?.toLowerCase() 
+            : defaultLanguage.toLowerCase();
+          
+          setLanguage(normalizedLanguage);
+          // Get default code for the selected language
+          const defaultImplementation = challenge.languageImplementations?.[normalizedLanguage];
+          const defaultCode = defaultImplementation?.visibleCode || getDefaultCodeForLanguage(normalizedLanguage);
+          setEditorValue(defaultCode);
+          
+          // Update answers state
+          setAnswers(prev => ({
+            ...prev,
+            [challenge._id]: {
+              code: defaultCode,
+              language: normalizedLanguage
+            }
+          }));
         }
       }
     }
