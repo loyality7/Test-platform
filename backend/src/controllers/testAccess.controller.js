@@ -8,13 +8,13 @@ import { validateEmail } from '../utils/validation.js';
 export const addTestUsers = async (req, res) => {
   try {
     const { users, validUntil, maxAttempts } = req.body;
-    const test = req.test; // From validateTestAccess middleware
+    const test = req.test;
 
     if (!users || !Array.isArray(users)) {
       return res.status(400).json({ message: "Users array is required" });
     }
 
-    // Check for duplicate emails in the input array itself
+    // Check for duplicate emails
     const emailCounts = {};
     users.forEach(user => {
       emailCounts[user.email] = (emailCounts[user.email] || 0) + 1;
@@ -41,6 +41,14 @@ export const addTestUsers = async (req, res) => {
       }
     };
 
+    // Initialize access control if it doesn't exist
+    if (!test.accessControl) {
+      test.accessControl = {
+        allowedUsers: [],
+        currentUserCount: 0
+      };
+    }
+
     for (const userData of users) {
       const { email, name } = userData;
       
@@ -49,20 +57,9 @@ export const addTestUsers = async (req, res) => {
         continue;
       }
 
-      // Check if user already exists in database
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        // Add test to user's available tests if not already there
-        if (!existingUser.availableTests?.includes(test._id)) {
-          existingUser.availableTests = existingUser.availableTests || [];
-          existingUser.availableTests.push(test._id);
-          await existingUser.save();
-        }
-      }
-
       // Check if user is already in allowed users
       const isExistingUser = test.accessControl.allowedUsers?.some(
-        userId => userId.toString() === email
+        user => user.email === email
       );
 
       if (isExistingUser) {
@@ -72,11 +69,11 @@ export const addTestUsers = async (req, res) => {
       }
 
       // Add user to allowed users
-      if (!test.accessControl.allowedUsers) {
-        test.accessControl.allowedUsers = [];
-      }
-      
-      test.accessControl.allowedUsers.push(email);
+      test.accessControl.allowedUsers.push({
+        email,
+        name,
+        addedAt: new Date()
+      });
       test.accessControl.currentUserCount++;
       
       results.addedUsers.push({ email, name });
@@ -106,6 +103,7 @@ export const addTestUsers = async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Error in addTestUsers:', error);
     res.status(500).json({ message: error.message });
   }
 };
