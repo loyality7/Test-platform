@@ -757,26 +757,34 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
   // Update handleLanguageChange
   const handleLanguageChange = (newLanguage) => {
-    setLanguage(newLanguage);
+    console.log('Changing language to:', newLanguage); // Debug log
     
-    if (challenge?._id) {
-      // Try both the new language and its ID for implementations
-      const languageId = Object.keys(LANGUAGE_NAMES).find(
-        key => LANGUAGE_NAMES[key].toLowerCase() === newLanguage
-      );
-      
-      const defaultCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || 
-                         challenge.languageImplementations?.[languageId]?.visibleCode || 
-                         getDefaultCodeForLanguage(newLanguage);
-      
+    if (!challenge?._id) return;
+
+    // Convert language name to lowercase for consistency
+    const normalizedLanguage = newLanguage.toLowerCase();
+    setLanguage(normalizedLanguage);
+    
+    // Get existing answer or create new one
+    const existingAnswer = answers[challenge._id];
+    
+    // Get the appropriate default code
+    const defaultCode = challenge.languageImplementations?.[normalizedLanguage]?.visibleCode || 
+                       getDefaultCodeForLanguage(normalizedLanguage);
+    
+    // Only update if we're changing to a new language
+    if (existingAnswer?.language !== normalizedLanguage) {
       setEditorValue(defaultCode);
-      setAnswers(prev => ({
-        ...prev,
+      
+      const newAnswers = {
+        ...answers,
         [challenge._id]: {
           code: defaultCode,
-          language: newLanguage
+          language: normalizedLanguage
         }
-      }));
+      };
+      console.log('Updating answers:', newAnswers); // Debug log
+      setAnswers(newAnswers);
     }
   };
 
@@ -803,11 +811,11 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
       >
         {challenge.allowedLanguages.map(lang => {
-          // Convert numeric language ID to name if needed
-          const langName = LANGUAGE_NAMES[lang] || lang;
+          // Handle both string and numeric language IDs
+          const langName = (typeof lang === 'number') ? LANGUAGE_NAMES[lang] : lang;
           const langValue = langName.toLowerCase();
           return (
-            <option key={lang} value={langValue}>
+            <option key={langValue} value={langValue}>
               {langName}
             </option>
           );
