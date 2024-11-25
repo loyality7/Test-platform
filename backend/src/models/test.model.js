@@ -123,8 +123,10 @@ const testSchema = new mongoose.Schema({
       default: 0
     },
     allowedUsers: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      _id: false, // Disable automatic _id for subdocuments
+      email: String,
+      name: String,
+      addedAt: Date
     }],
     allowedEmails: [{
       type: String,
