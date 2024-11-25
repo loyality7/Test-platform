@@ -506,105 +506,72 @@ export const getTestResults = async (req, res) => {
       });
     }
 
-    // Get MCQ submissions
-    const mcqSubmissions = await MCQSubmission.find({ testId })
-      .populate('userId', 'name email')
-      .populate('questionId', 'correctOptions marks')
-      .lean();
+    // Get all completed submissions for this test
+    const submissions = await Submission.find({ 
+      test: testId,
+      status: 'completed'
+    })
+    .populate('user', 'name email')
+    .lean();
 
-    // Get coding submissions
-    const codingSubmissions = await CodingSubmission.find({ testId })
-      .populate('challengeId', 'title maxScore')
-      .lean();
-
-    // Group submissions by user
-    const userSubmissions = {};
-    
-    // Process MCQ submissions
-    mcqSubmissions.forEach(sub => {
-      const userId = sub.userId._id.toString();
-      if (!userSubmissions[userId]) {
-        userSubmissions[userId] = {
-          candidateId: userId,
-          candidateName: sub.userId.name,
-          email: sub.userId.email,
-          mcqScore: 0,
-          codingScore: 0,
-          totalScore: 0,
-          submittedAt: sub.submittedAt,
-          status: 'completed',
-          details: {
-            mcqAnswers: [],
-            codingChallenges: []
-          }
-        };
+    // Transform submissions into the expected format
+    const results = submissions.map(sub => ({
+      candidateId: sub.user._id,
+      candidateName: sub.user.name,
+      email: sub.user.email,
+      mcqScore: sub.mcqSubmission?.totalScore || 0,
+      codingScore: sub.codingSubmission?.totalScore || 0,
+      totalScore: sub.totalScore || 0,
+      submittedAt: sub.endTime || sub.updatedAt,
+      status: sub.status,
+      duration: sub.endTime ? Math.round((sub.endTime - sub.startTime) / (1000 * 60)) : null, // in minutes
+      details: {
+        mcqAnswers: sub.mcqSubmission?.answers?.map(answer => ({
+          questionId: answer.questionId,
+          selectedAnswer: answer.selectedOptions,
+          isCorrect: answer.isCorrect,
+          marks: answer.marksObtained,
+          maxMarks: answer.maxMarks
+        })) || [],
+        codingChallenges: sub.codingSubmission?.challenges?.map(challenge => ({
+          challengeId: challenge.challengeId,
+          submissions: challenge.submissions.map(submission => ({
+            code: submission.code,
+            language: submission.language,
+            status: submission.status,
+            executionTime: submission.executionTime,
+            memory: submission.memory,
+            testCaseResults: submission.testCaseResults,
+            marks: submission.marks
+          })),
+          bestScore: Math.max(...(challenge.submissions.map(s => s.marks || 0)), 0)
+        })) || []
       }
-      
-      userSubmissions[userId].details.mcqAnswers.push({
-        questionId: sub.questionId._id,
-        selectedAnswer: sub.selectedOptions,
-        isCorrect: sub.isCorrect,
-        marks: sub.marksObtained,
-        maxMarks: sub.questionId.marks
-      });
-      
-      userSubmissions[userId].mcqScore += sub.marksObtained;
-    });
+    }));
 
-    // Process coding submissions
-    codingSubmissions.forEach(sub => {
-      const userId = sub.userId.toString();
-      if (!userSubmissions[userId]) {
-        userSubmissions[userId] = {
-          candidateId: userId,
-          mcqScore: 0,
-          codingScore: 0,
-          totalScore: 0,
-          status: 'completed',
-          details: {
-            mcqAnswers: [],
-            codingChallenges: []
-          }
-        };
+    // Calculate percentages for scores
+    results.forEach(result => {
+      // Convert absolute scores to percentages if they aren't already
+      if (result.mcqScore > 100) {
+        const totalMCQMarks = result.details.mcqAnswers.reduce((sum, q) => sum + q.maxMarks, 0);
+        result.mcqScore = totalMCQMarks > 0 
+          ? Math.round((result.mcqScore / totalMCQMarks) * 100) 
+          : 0;
       }
-      
-      userSubmissions[userId].details.codingChallenges.push({
-        challengeId: sub.challengeId._id,
-        title: sub.challengeId.title,
-        bestScore: sub.bestScore,
-        maxScore: sub.challengeId.maxScore,
-        submissions: sub.submissions.map(attempt => ({
-          code: attempt.code,
-          language: attempt.language,
-          status: attempt.status,
-          executionTime: attempt.executionDetails.totalExecutionTime,
-          memory: attempt.executionDetails.memory,
-          testCaseResults: attempt.testCaseResults,
-          marks: attempt.marks,
-          maxMarks: attempt.maxMarks
-        }))
-      });
-      
-      userSubmissions[userId].codingScore += sub.bestScore;
-    });
 
-    // Calculate total scores and percentages
-    Object.values(userSubmissions).forEach(submission => {
-      const totalMaxMCQScore = submission.details.mcqAnswers.reduce((sum, q) => sum + q.maxMarks, 0);
-      const totalMaxCodingScore = submission.details.codingChallenges.reduce((sum, c) => sum + c.maxScore, 0);
-      
-      submission.mcqScore = totalMaxMCQScore > 0 
-        ? Math.round((submission.mcqScore / totalMaxMCQScore) * 100) 
-        : 0;
-      
-      submission.codingScore = totalMaxCodingScore > 0 
-        ? Math.round((submission.codingScore / totalMaxCodingScore) * 100) 
-        : 0;
-      
-      submission.totalScore = Math.round((submission.mcqScore + submission.codingScore) / 2);
-    });
+      if (result.codingScore > 100) {
+        const totalCodingMarks = result.details.codingChallenges.reduce(
+          (sum, c) => sum + Math.max(...c.submissions.map(s => s.marks || 0)), 
+          0
+        );
+        result.codingScore = totalCodingMarks > 0 
+          ? Math.round((result.codingScore / totalCodingMarks) * 100) 
+          : 0;
+      }
 
-    const results = Object.values(userSubmissions);
+      // Ensure total score is also a percentage
+      result.totalScore = Math.round((result.mcqScore + result.codingScore) / 2);
+    });
 
     res.status(200).json({
       testId,
@@ -615,7 +582,21 @@ export const getTestResults = async (req, res) => {
           ? Math.round(results.reduce((sum, sub) => sum + sub.totalScore, 0) / results.length) 
           : 0,
         totalCandidates: results.length,
-        completedSubmissions: results.filter(sub => sub.status === 'completed').length
+        completedSubmissions: results.length,
+        mcqStats: {
+          average: results.length > 0 
+            ? Math.round(results.reduce((sum, sub) => sum + sub.mcqScore, 0) / results.length) 
+            : 0,
+          highest: Math.max(...results.map(sub => sub.mcqScore), 0),
+          lowest: Math.min(...results.map(sub => sub.mcqScore), 0)
+        },
+        codingStats: {
+          average: results.length > 0 
+            ? Math.round(results.reduce((sum, sub) => sum + sub.codingScore, 0) / results.length) 
+            : 0,
+          highest: Math.max(...results.map(sub => sub.codingScore), 0),
+          lowest: Math.min(...results.map(sub => sub.codingScore), 0)
+        }
       }
     });
 
