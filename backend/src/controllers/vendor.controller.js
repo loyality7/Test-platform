@@ -302,7 +302,7 @@ const calculatePeakHours = (submissions) => {
 export const getTestResults = async (req, res) => {
   try {
     const { testId } = req.params;
-    
+
     // Verify test belongs to vendor
     const test = await Test.findOne({
       _id: testId,
@@ -311,35 +311,72 @@ export const getTestResults = async (req, res) => {
 
     if (!test) {
       return res.status(404).json({ 
-        error: "Test not found or you do not have permission to view it" 
+        error: "Test not found or you don't have permission to view it" 
       });
     }
 
-    // Get all submissions for this test
-    const submissions = await Submission.find({ test: testId })
-      .populate('user', 'name email')
-      .sort('-updatedAt');
+    // Get all submissions for this test with populated user data
+    const submissions = await Submission.find({
+      test: testId
+    })
+    .populate('user', 'name email')
+    .populate('mcqSubmission')
+    .populate('codingSubmission')
+    .sort({ submittedAt: -1 });
 
-    const results = submissions.map(submission => ({
-      candidateId: submission.user._id,
-      candidateName: submission.user.name,
-      email: submission.user.email,
-      score: submission.totalScore,
-      mcqScore: submission.mcqSubmission?.totalScore || 0,
-      codingScore: submission.codingSubmission?.totalScore || 0,
-      submittedAt: submission.updatedAt,
-      status: submission.status,
-      completionTime: submission.endTime ? 
-        (submission.endTime - submission.startTime) / 1000 : null,
-      details: {
-        mcqAnswers: submission.mcqSubmission?.answers?.length || 0,
-        codingChallenges: submission.codingSubmission?.challenges?.length || 0
-      }
+    // Calculate and format results
+    const results = await Promise.all(submissions.map(async (submission) => {
+      // Calculate MCQ score
+      const mcqScore = submission.mcqSubmission?.answers?.reduce((total, answer) => {
+        if (answer.isCorrect) {
+          const mcq = test.mcqs.find(q => q._id.toString() === answer.questionId.toString());
+          return total + (mcq?.marks || 0);
+        }
+        return total;
+      }, 0) || 0;
+
+      // Calculate coding score
+      const codingScore = submission.codingSubmission?.answers?.reduce((total, answer) => {
+        const challenge = test.codingChallenges.find(
+          c => c._id.toString() === answer.challengeId.toString()
+        );
+        const maxMarks = challenge?.marks || 0;
+        return total + (answer.score * maxMarks / 100); // Convert percentage to actual marks
+      }, 0) || 0;
+
+      // Calculate total score
+      const totalScore = mcqScore + codingScore;
+
+      return {
+        candidateId: submission.user._id,
+        candidateName: submission.user.name,
+        email: submission.user.email,
+        score: Math.round(totalScore), // Round to nearest integer
+        mcqScore: Math.round(mcqScore),
+        codingScore: Math.round(codingScore),
+        submittedAt: submission.submittedAt,
+        status: submission.status,
+        completionTime: submission.duration,
+        details: {
+          mcqAnswers: submission.mcqSubmission?.answers?.length || 0,
+          codingChallenges: submission.codingSubmission?.answers?.length || 0,
+          totalMcqQuestions: test.mcqs.length,
+          totalCodingChallenges: test.codingChallenges.length,
+          passingScore: test.passingMarks,
+          result: totalScore >= test.passingMarks ? 'PASS' : 'FAIL'
+        },
+        lastActivity: submission.updatedAt
+      };
     }));
 
     res.json(results);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error in getTestResults:', error);
+    res.status(500).json({ 
+      error: "Failed to fetch test results",
+      details: error.message 
+    });
   }
 };
 
@@ -1164,5 +1201,61 @@ export const addUsersToTest = async (req, res) => {
       error: 'Failed to add users to test',
       message: error.message 
     });
+  }
+};
+
+// Get test results for a specific user
+export const getUserTestResults = async (req, res) => {
+  try {
+    const { testId, userId } = req.params;
+
+    // Verify test belongs to vendor
+    const test = await Test.findOne({
+      _id: testId,
+      vendor: req.user._id
+    });
+
+    if (!test) {
+      return res.status(404).json({ 
+        error: "Test not found or you do not have permission to view it" 
+      });
+    }
+
+    // Get user's submission
+    const submission = await Submission.findOne({
+      test: testId,
+      user: userId
+    })
+    .populate('user', 'name email')
+    .populate('test', 'title passingMarks');
+
+    if (!submission) {
+      return res.status(404).json({ error: "No submission found for this user" });
+    }
+
+    // Format response
+    const result = {
+      candidateId: submission.user._id,
+      candidateName: submission.user.name,
+      email: submission.user.email,
+      testTitle: submission.test.title,
+      score: submission.score || 0,
+      mcqScore: submission.mcqSubmission?.totalScore || 0,
+      codingScore: submission.codingSubmission?.totalScore || 0,
+      status: submission.status,
+      submittedAt: submission.submittedAt,
+      completionTime: submission.duration,
+      result: (submission.score >= submission.test.passingMarks) ? 'PASS' : 'FAIL',
+      details: {
+        mcqAnswers: submission.mcqSubmission?.answers?.length || 0,
+        codingChallenges: submission.codingSubmission?.answers?.length || 0
+      }
+    };
+
+    res.json(result);
+
+  } catch (error) {
+    console.error('Error in getUserTestResults:', error);
+    res.status(500).json({ error: error.message });
   }
 }; 

@@ -21,7 +21,8 @@ import {
   getUserMCQSubmissions,
   getSpecificMCQSubmission,
   getUserCodingSubmissions,
-  getSpecificCodingSubmission
+  getSpecificCodingSubmission,
+  getUserTestResults
 } from "../controllers/vendor.controller.js";
 import { validateTestAccess } from '../middleware/validateTestAccess.js';
 import { addTestUsers, uploadTestUsers, removeTestUsers } from '../controllers/testAccess.controller.js';
@@ -1403,6 +1404,40 @@ router.post(
   checkRole(["vendor"]),
   validateTestAccess,
   removeTestUsers
+);
+
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}/candidates/{userId}/results:
+ *   get:
+ *     summary: Get test results for a specific candidate
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Test results retrieved successfully
+ *       403:
+ *         description: Not authorized to view these results
+ *       404:
+ *         description: Test or submission not found
+ */
+router.get(
+  "/tests/:testId/candidates/:userId/results", 
+  auth, 
+  checkRole(["vendor"]), 
+  getUserTestResults
 );
 
 export default router; 
