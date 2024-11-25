@@ -1240,132 +1240,97 @@ export const getUserTestResults = async (req, res) => {
       return res.status(404).json({ error: "No submission found for this user" });
     }
 
-    // Calculate MCQ details with correct marking scheme
-    const mcqDetails = submission.mcqSubmission?.answers?.map(answer => {
-      const question = submission.test.mcqs.find(q => 
-        q._id.toString() === answer.questionId.toString()
-      );
-      
-      // Initialize scoring variables
-      let isCorrect = false;
-      let marks = 0;
-      const maxMarks = question?.marks || 0;
+    // Transform MCQ submission with proper scoring
+    const mcqSubmission = submission.mcqSubmission ? {
+      totalScore: submission.mcqSubmission.totalScore,
+      submittedAt: submission.mcqSubmission.submittedAt,
+      answers: submission.mcqSubmission.answers?.map(answer => {
+        const question = test.mcqs.find(q => 
+          q._id.toString() === answer.questionId.toString()
+        );
+        
+        let marks = 0;
+        let isCorrect = false;
 
-      if (question.answerType === 'single') {
-        // For single answer questions
-        if (answer.selectedOptions.length === 1) {
-          if (question.correctOptions.length === 1 && 
+        if (question.answerType === 'single') {
+          if (answer.selectedOptions.length === 1 && 
+              question.correctOptions.length === 1 && 
               answer.selectedOptions[0] === question.correctOptions[0]) {
-            // Give full marks if there's only one correct option and user selected it
-            marks = maxMarks;
+            marks = question.marks;
             isCorrect = true;
           } else if (question.correctOptions.includes(answer.selectedOptions[0])) {
-            // Give 2 marks if selected option is one of multiple correct options
+            marks = 2;
+            isCorrect = true;
+          }
+        } else {
+          // Multiple answer logic
+          const correctSelectedCount = answer.selectedOptions.filter(opt => 
+            question.correctOptions.includes(opt)
+          ).length;
+          
+          if (correctSelectedCount > 0) {
             marks = 2;
             isCorrect = true;
           }
         }
-      } else {
-        // For multiple answer questions
-        const correctSelectedCount = answer.selectedOptions.filter(opt => 
-          question.correctOptions.includes(opt)
-        ).length;
 
-        if (correctSelectedCount > 0) {
-          if (correctSelectedCount === question.correctOptions.length && 
-              answer.selectedOptions.length === question.correctOptions.length) {
-            // Give full marks if all correct options are selected
-            marks = maxMarks;
-            isCorrect = true;
-          } else {
-            // Give 2 marks if at least one correct option is selected
-            marks = 2;
-            isCorrect = true;
-          }
-        }
-      }
+        return {
+          questionId: answer.questionId,
+          question: question?.question,
+          selectedOptions: answer.selectedOptions,
+          correctOptions: question?.correctOptions,
+          isCorrect,
+          marks,
+          maxMarks: question?.marks,
+          timeTaken: answer.timeTaken
+        };
+      })
+    } : null;
 
-      return {
-        questionId: answer.questionId,
-        question: question?.question,
-        selectedOptions: answer.selectedOptions,
-        correctOptions: question?.correctOptions,
-        isCorrect: isCorrect,
-        marks: marks,
-        maxMarks: maxMarks,
-        timeTaken: answer.timeTaken,
-        submittedAt: answer.submittedAt,
-        answerType: question?.answerType,
-        partiallyCorrect: marks > 0 && marks < maxMarks
-      };
-    }) || [];
-
-    // Calculate scores
-    const mcqScore = mcqDetails.reduce((total, mcq) => total + (mcq.marks || 0), 0);
-    const codingScore = submission.codingSubmission?.answers?.reduce((total, answer) => {
-      const challenge = submission.test.codingChallenges.find(
-        c => c._id.toString() === answer.challengeId.toString()
-      );
-      return total + ((answer.score * challenge?.marks) / 100 || 0);
-    }, 0) || 0;
-
-    const totalScore = mcqScore + codingScore;
-    const percentage = Math.round((totalScore / submission.test.totalMarks) * 100);
-
-    // Format response
-    const result = {
-      candidateInfo: {
-        candidateId: submission.user._id,
-        candidateName: submission.user.name,
-        email: submission.user.email
-      },
-      testInfo: {
-        testId: submission.test._id,
-        testTitle: submission.test.title,
-        totalMarks: submission.test.totalMarks,
-        passingMarks: submission.test.passingMarks,
-        duration: submission.test.timeLimit
-      },
-      submissionInfo: {
-        submissionId: submission._id,
-        startedAt: submission.createdAt,
-        submittedAt: submission.submittedAt,
-        status: submission.status,
-        completionTime: submission.duration,
-        warnings: submission.warnings || 0,
-        proctoringSessions: submission.proctoringSessions || []
-      },
-      scores: {
-        totalScore: Math.round(totalScore),
-        mcqScore: Math.round(mcqScore),
-        codingScore: Math.round(codingScore),
-        percentage,
-        result: totalScore >= submission.test.passingMarks ? 'PASS' : 'FAIL'
-      },
-      mcqSection: {
-        totalQuestions: submission.test.mcqs.length,
-        attemptedQuestions: mcqDetails.length,
-        correctAnswers: mcqDetails.filter(m => m.isCorrect).length,
-        wrongAnswers: mcqDetails.filter(m => !m.isCorrect).length,
-        detailedAnswers: mcqDetails
-      },
-      codingSection: {
-        totalChallenges: submission.test.codingChallenges?.length || 0,
-        attemptedChallenges: submission.codingSubmission?.challenges?.length || 0,
-        challenges: submission.codingSubmission?.challenges?.map(challenge => ({
-          challengeId: challenge.challengeId._id,
-          title: challenge.challengeId.title,
-          submissions: challenge.submissions.map(sub => ({
+    // Transform coding submission
+    const codingSubmission = submission.codingSubmission ? {
+      totalScore: submission.codingSubmission.totalScore,
+      submittedAt: submission.codingSubmission.submittedAt,
+      challenges: submission.codingSubmission.challenges?.map(challenge => {
+        const challengeDetails = test.codingChallenges.find(c => 
+          c._id.toString() === challenge.challengeId.toString()
+        );
+        
+        return {
+          challengeId: challenge.challengeId,
+          title: challengeDetails?.title,
+          submissions: challenge.submissions?.map(sub => ({
             code: sub.code,
             language: sub.language,
             status: sub.status,
             marks: sub.marks,
-            maxMarks: challenge.challengeId.marks,
+            maxMarks: challengeDetails?.marks || 0,
             submittedAt: sub.submittedAt,
-            testCaseResults: sub.testCaseResults
+            testCaseResults: sub.testCaseResults,
+            executionDetails: sub.executionDetails
           }))
-        })) || []
-      }
+        };
+      })
+    } : null;
+
+    const result = {
+      user: {
+        id: submission.user._id,
+        name: submission.user.name,
+        email: submission.user.email
+      },
+      test: {
+        id: submission.test._id,
+        title: submission.test.title,
+        passingMarks: submission.test.passingMarks,
+        totalMarks: submission.test.totalMarks
+      },
+      mcqSubmission,
+      codingSubmission,
+      totalScore: (mcqSubmission?.totalScore || 0) + (codingSubmission?.totalScore || 0),
+      status: submission.status,
+      startTime: submission.startTime,
+      endTime: submission.endTime
     };
 
     res.json(result);
