@@ -1234,7 +1234,7 @@ export const getUserTestResults = async (req, res) => {
       return res.status(404).json({ error: "No submission found for this user" });
     }
 
-    // Calculate MCQ details with partial marking
+    // Calculate MCQ details with correct marking scheme
     const mcqDetails = submission.mcqSubmission?.answers?.map(answer => {
       const question = submission.test.mcqs.find(q => 
         q._id.toString() === answer.questionId.toString()
@@ -1248,8 +1248,13 @@ export const getUserTestResults = async (req, res) => {
       if (question.answerType === 'single') {
         // For single answer questions
         if (answer.selectedOptions.length === 1) {
-          if (question.correctOptions.includes(answer.selectedOptions[0])) {
-            // Give 2 marks if selected option is one of the correct options
+          if (question.correctOptions.length === 1 && 
+              answer.selectedOptions[0] === question.correctOptions[0]) {
+            // Give full marks if there's only one correct option and user selected it
+            marks = maxMarks;
+            isCorrect = true;
+          } else if (question.correctOptions.includes(answer.selectedOptions[0])) {
+            // Give 2 marks if selected option is one of multiple correct options
             marks = 2;
             isCorrect = true;
           }
@@ -1261,9 +1266,16 @@ export const getUserTestResults = async (req, res) => {
         ).length;
 
         if (correctSelectedCount > 0) {
-          // Give 2 marks if at least one selected option is correct
-          marks = 2;
-          isCorrect = true;
+          if (correctSelectedCount === question.correctOptions.length && 
+              answer.selectedOptions.length === question.correctOptions.length) {
+            // Give full marks if all correct options are selected
+            marks = maxMarks;
+            isCorrect = true;
+          } else {
+            // Give 2 marks if at least one correct option is selected
+            marks = 2;
+            isCorrect = true;
+          }
         }
       }
 
