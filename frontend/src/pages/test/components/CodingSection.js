@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiService } from '../../../services/api';
 import { toast } from 'react-hot-toast';
+import { LANGUAGE_NAMES } from '../../../constants/languages';
 
 export default function CodingSection({ challenges, answers, setAnswers, onSubmitCoding, setAnalytics }) {
   // Move ALL state declarations to the top
@@ -102,18 +103,23 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     }
   }, []);
 
-  // Update useEffect for challenge changes to use the API data
+  // Update useEffect for challenge changes
   useEffect(() => {
     if (challenges?.length > 0) {
       const challenge = challenges[currentChallenge];
       if (challenge?.allowedLanguages?.length > 0) {
-        const defaultLanguage = challenge.allowedLanguages[0].toLowerCase();
+        // Convert numeric language ID to name if needed
+        const firstLanguage = challenge.allowedLanguages[0];
+        const defaultLanguage = (LANGUAGE_NAMES[firstLanguage] || firstLanguage).toLowerCase();
         setLanguage(defaultLanguage);
         
         // Initialize answers if they don't exist
         const existingAnswer = answers[challenge._id];
         if (!existingAnswer) {
-          const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || '// Write your code here\n';
+          // Handle both string and numeric language IDs for visible code
+          const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || 
+                            challenge.languageImplementations?.[firstLanguage]?.visibleCode || 
+                            getDefaultCodeForLanguage(defaultLanguage);
           setEditorValue(visibleCode);
           
           const newAnswers = {
@@ -124,7 +130,6 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
             }
           };
           setAnswers(newAnswers);
-          console.log('Initialized answers:', newAnswers);
         } else {
           setEditorValue(existingAnswer.code);
           setLanguage(existingAnswer.language);
@@ -132,6 +137,19 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
       }
     }
   }, [challenges, currentChallenge, answers, setAnswers]);
+
+  // Add this helper function to provide default code templates
+  const getDefaultCodeForLanguage = (language) => {
+    const templates = {
+      python: '# Write your Python code here\n\ndef solution():\n    pass\n',
+      javascript: '// Write your JavaScript code here\n\nfunction solution() {\n    \n}\n',
+      java: 'public class Solution {\n    public static void main(String[] args) {\n        // Write your Java code here\n    }\n}\n',
+      cpp: '#include <iostream>\n\nint main() {\n    // Write your C++ code here\n    return 0;\n}\n',
+      c: '#include <stdio.h>\n\nint main() {\n    // Write your C code here\n    return 0;\n}\n',
+      // Add more language templates as needed
+    };
+    return templates[language] || '// Write your code here\n';
+  };
 
   // Handle left panel resize
   const handleLeftResize = useCallback((e) => {
@@ -737,15 +755,20 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     );
   };
 
-  // Update handleLanguageChange to preserve user code when changing languages
+  // Update handleLanguageChange
   const handleLanguageChange = (newLanguage) => {
     setLanguage(newLanguage);
     
     if (challenge?._id) {
-      // Get the default code for the new language
-      const defaultCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || '// Write your code here\n';
+      // Try both the new language and its ID for implementations
+      const languageId = Object.keys(LANGUAGE_NAMES).find(
+        key => LANGUAGE_NAMES[key].toLowerCase() === newLanguage
+      );
       
-      // Update editor value and answers
+      const defaultCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || 
+                         challenge.languageImplementations?.[languageId]?.visibleCode || 
+                         getDefaultCodeForLanguage(newLanguage);
+      
       setEditorValue(defaultCode);
       setAnswers(prev => ({
         ...prev,
@@ -769,6 +792,30 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     }
   };
 
+  // Update language selection rendering
+  const renderLanguageSelector = () => {
+    if (!challenge?.allowedLanguages) return null;
+
+    return (
+      <select
+        value={language}
+        onChange={(e) => handleLanguageChange(e.target.value)}
+        className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
+      >
+        {challenge.allowedLanguages.map(lang => {
+          // Convert numeric language ID to name if needed
+          const langName = LANGUAGE_NAMES[lang] || lang;
+          const langValue = langName.toLowerCase();
+          return (
+            <option key={lang} value={langValue}>
+              {langName}
+            </option>
+          );
+        })}
+      </select>
+    );
+  };
+
   return (
     <div className="relative h-full">
       {isLoadingTestId && (
@@ -784,15 +831,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           </div>
 
           <div className="flex items-center gap-2">
-            <select
-              value={language}
-              onChange={(e) => handleLanguageChange(e.target.value)}
-              className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
-            >
-              {challenge?.allowedLanguages?.map(lang => (
-                <option key={lang} value={lang.toLowerCase()}>{lang}</option>
-              ))}
-            </select>
+            {renderLanguageSelector()}
 
             <div className="flex items-center gap-1">
               <button

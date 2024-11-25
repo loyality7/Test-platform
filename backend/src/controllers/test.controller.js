@@ -513,6 +513,7 @@ export const addMCQs = async (req, res) => {
     
     res.status(201).json({
       message: "MCQs added successfully",
+      
       test,
       addedMCQs: mcqsToAdd
     });
