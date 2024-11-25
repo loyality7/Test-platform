@@ -33,33 +33,16 @@ export const createTest = async (req, res) => {
 
     // Validate MCQs if provided
     for (const mcq of mcqs) {
-      if (!mcq.question || !mcq.options || !mcq.correctOptions || 
-          !mcq.answerType || !mcq.marks || !mcq.difficulty) {
+      if (!mcq.question || !mcq.options || !mcq.correctOptions || !mcq.marks) {
         return res.status(400).json({
-          error: "Each MCQ must have question, options, correctOptions, answerType, marks, and difficulty"
+          error: "Each MCQ must have question, options, correctOptions, and marks"
         });
       }
     }
 
-    // Validate coding challenges and convert language IDs to names
+    // Validate coding challenges without language ID conversion
     for (const challenge of codingChallenges) {
-      // Validate allowedLanguages exists and is an array
-      if (!Array.isArray(challenge.allowedLanguages) || challenge.allowedLanguages.length === 0) {
-        return res.status(400).json({
-          error: "At least one programming language must be allowed",
-          receivedLanguages: challenge.allowedLanguages
-        });
-      }
-
-      // Convert language IDs to names
-      challenge.allowedLanguages = challenge.allowedLanguages.map(langId => {
-        const language = Object.entries(LANGUAGE_IDS).find(([_, id]) => id === langId);
-        if (!language) {
-          throw new Error(`Invalid language ID: ${langId}`);
-        }
-        return language[0].toLowerCase(); // Return the language name in lowercase
-      });
-
+      // Basic validation
       if (!challenge.title || !challenge.description || !challenge.problemStatement || 
           !challenge.constraints || !challenge.allowedLanguages || 
           !challenge.languageImplementations || !challenge.marks || 
@@ -69,28 +52,21 @@ export const createTest = async (req, res) => {
         });
       }
 
-      // Map allowed languages to Judge0 IDs
-      challenge.allowedLanguages = challenge.allowedLanguages.map(lang => {
-        const langId = LANGUAGE_IDS[lang.toLowerCase()];
-        if (!langId) {
-          throw new Error(`Unsupported language: ${lang}`);
-        }
-        return langId;
-      });
-
-      // Map language implementations to use Judge0 IDs as keys
-      const mappedImplementations = {};
-      for (const [lang, impl] of Object.entries(challenge.languageImplementations)) {
-        const langId = LANGUAGE_IDS[lang.toLowerCase()];
-        if (!langId) {
-          throw new Error(`Unsupported language in implementations: ${lang}`);
-        }
-        if (!impl.visibleCode || !impl.invisibleCode) {
-          throw new Error(`Both visibleCode and invisibleCode are required for language: ${lang}`);
-        }
-        mappedImplementations[langId] = impl;
+      // Validate allowed languages array exists
+      if (!Array.isArray(challenge.allowedLanguages) || challenge.allowedLanguages.length === 0) {
+        return res.status(400).json({
+          error: "At least one programming language must be allowed"
+        });
       }
-      challenge.languageImplementations = mappedImplementations;
+
+      // Validate language implementations
+      for (const [lang, impl] of Object.entries(challenge.languageImplementations)) {
+        if (!impl.visibleCode || !impl.invisibleCode) {
+          return res.status(400).json({
+            error: `Both visibleCode and invisibleCode are required for language: ${lang}`
+          });
+        }
+      }
 
       // Validate test cases if provided
       if (challenge.testCases) {
@@ -135,7 +111,7 @@ export const createTest = async (req, res) => {
   } catch (error) {
     res.status(500).json({ 
       error: error.message,
-      details: "Failed to create test with language mappings"
+      details: "Failed to create test"
     });
   }
 };
@@ -182,89 +158,54 @@ export const getTests = async (req, res) => {
     
     const tests = await Test.find(query)
       .populate('vendor', 'name email')
-      .select('-mcqs.correctOptions -codingChallenges.testCases') // Don't send answers
+      .select('-mcqs.correctOptions -codingChallenges.testCases')
       .sort({ createdAt: -1 });
 
-    // Create a reverse mapping of language IDs to names
-    const LANGUAGE_NAMES = Object.entries(LANGUAGE_IDS).reduce((acc, [name, id]) => {
-      acc[id] = name;
-      return acc;
-    }, {});
-
-    // Transform the response to include submission data
-    const transformedTests = await Promise.all(tests.map(async test => {
-      // Get user's submission for this test if they're logged in
-      let submission = null;
-      if (req.user) {
-        submission = await Submission.findOne({
-          test: test._id,
-          user: req.user._id
-        })
-        .select('score status submittedAt mcqAnswers codingAnswers')
-        .lean();
-      }
-
-      return {
-        _id: test._id,
-        title: test.title,
-        description: test.description,
-        duration: test.duration,
-        totalMarks: test.totalMarks,
-        passingMarks: test.passingMarks,
-        type: test.type,
-        status: test.status,
-        category: test.category,
-        difficulty: test.difficulty,
-        accessControl: {
-          type: test.accessControl.type
-        },
-        vendor: {
-          name: test.vendor.name,
-          email: test.vendor.email
-        },
-        mcqs: test.mcqs?.map(mcq => ({
-          question: mcq.question,
-          options: mcq.options,
-          marks: mcq.marks,
-          difficulty: mcq.difficulty,
-          answerType: mcq.answerType
-        })) || [],
-        codingChallenges: test.codingChallenges?.map(challenge => ({
-          title: challenge.title,
-          description: challenge.description,
-          constraints: challenge.constraints,
-          language: challenge.language,
-          marks: challenge.marks,
-          timeLimit: challenge.timeLimit,
-          memoryLimit: challenge.memoryLimit,
-          difficulty: challenge.difficulty,
-          allowedLanguages: challenge.allowedLanguages?.map(langId => 
-            LANGUAGE_NAMES[langId] || langId
-          ),
-          languageImplementations: Object.entries(challenge.languageImplementations || {}).reduce((acc, [langId, impl]) => {
-            const langName = LANGUAGE_NAMES[langId] || langId;
-            acc[langName] = impl;
-            return acc;
-          }, {})
-        })) || [],
-        questionCounts: {
-          mcq: test.mcqs?.length || 0,
-          coding: test.codingChallenges?.length || 0
-        },
-        instructions: test.instructions,
-        proctoring: test.proctoring,
-        createdAt: test.createdAt,
-        updatedAt: test.updatedAt,
-        // Add submission data if available
-        submission: submission ? {
-          score: submission.score,
-          status: submission.status,
-          submittedAt: submission.submittedAt,
-          hasSubmission: true
-        } : {
-          hasSubmission: false
-        }
-      };
+    // Transform the response without language ID conversion
+    const transformedTests = tests.map(test => ({
+      _id: test._id,
+      title: test.title,
+      description: test.description,
+      duration: test.duration,
+      totalMarks: test.totalMarks,
+      passingMarks: test.passingMarks,
+      type: test.type,
+      status: test.status,
+      category: test.category,
+      difficulty: test.difficulty,
+      accessControl: {
+        type: test.accessControl.type
+      },
+      vendor: {
+        name: test.vendor.name,
+        email: test.vendor.email
+      },
+      mcqs: test.mcqs?.map(mcq => ({
+        question: mcq.question,
+        options: mcq.options,
+        marks: mcq.marks,
+        difficulty: mcq.difficulty,
+        answerType: mcq.answerType
+      })) || [],
+      codingChallenges: test.codingChallenges?.map(challenge => ({
+        title: challenge.title,
+        description: challenge.description,
+        constraints: challenge.constraints,
+        marks: challenge.marks,
+        timeLimit: challenge.timeLimit,
+        memoryLimit: challenge.memoryLimit,
+        difficulty: challenge.difficulty,
+        allowedLanguages: challenge.allowedLanguages, // Return languages as-is
+        languageImplementations: challenge.languageImplementations // Return implementations as-is
+      })) || [],
+      questionCounts: {
+        mcq: test.mcqs?.length || 0,
+        coding: test.codingChallenges?.length || 0
+      },
+      instructions: test.instructions,
+      proctoring: test.proctoring,
+      createdAt: test.createdAt,
+      updatedAt: test.updatedAt
     }));
 
     res.json(transformedTests);
@@ -579,7 +520,7 @@ export const updateMCQ = async (req, res) => {
     // Recalculate total marks if marks were updated
     if (req.body.marks) {
       test.totalMarks = test.mcqs.reduce((sum, mcq) => sum + mcq.marks, 0) +
-                       (test.codingChallenges?.reduce((sum, ch) => sum + ch.marks, 0) || 0);
+                       (test.codingChallenges?.reduce((sum, ch) => sum + ch.marks, 0) || 0;
       test.passingMarks = Math.ceil(test.totalMarks * 0.4);
     }
 
@@ -1047,12 +988,12 @@ export const startTestSession = async (req, res) => {
       });
     }
 
-    // Create new session with duration from test
+    // Create new session
     const session = await TestSession.create({
       test: test._id,
       user: req.user._id,
       startTime: new Date(),
-      duration: test.timeLimit, // Set duration from test timeLimit
+      duration: test.timeLimit,
       status: 'active',
       deviceInfo: {
         userAgent: deviceInfo?.userAgent,
@@ -1287,7 +1228,7 @@ export const verifyTestByUuid = async (req, res) => {
     const { uuid } = req.params;
     
     const test = await Test.findOne({ uuid })
-      .select('title description duration type category totalMarks status') // Select only needed fields
+      .select('title description duration type category totalMarks status vendor')
       .populate('vendor', 'name email');
     
     if (!test) {
@@ -1296,7 +1237,6 @@ export const verifyTestByUuid = async (req, res) => {
       });
     }
 
-    // Return in the expected structure
     return res.status(200).json({
       message: 'Test verified successfully',
       test: {
@@ -1308,7 +1248,10 @@ export const verifyTestByUuid = async (req, res) => {
         category: test.category,
         totalMarks: test.totalMarks,
         status: test.status,
-        vendor: test.vendor
+        vendor: {
+          name: test.vendor?.name,
+          email: test.vendor?.email
+        }
       }
     });
 
@@ -1708,68 +1651,74 @@ export const getPublicTests = async (req, res) => {
 
 export const getTestByUuid = async (req, res) => {
   try {
-    console.log('UUID received:', req.params.uuid);
-
-    const test = await Test.findOne({ uuid: req.params.uuid })
-      .select('_id uuid title description duration type category difficulty totalMarks status accessControl vendor codingChallenges')
+    const { uuid } = req.params;
+    
+    const test = await Test.findOne({ uuid })
+      .select('_id uuid title description duration type category difficulty totalMarks status accessControl vendor mcqs codingChallenges')
       .populate('vendor', 'name email')
       .lean();
-    
+
     if (!test) {
-      console.log('Test not found for UUID:', req.params.uuid);
       return res.status(404).json({ 
-        message: "Test not found",
-        uuid: req.params.uuid 
+        message: "Test not found" 
       });
     }
 
-    // Create a reverse mapping of language IDs to names
-    const LANGUAGE_NAMES = Object.entries(LANGUAGE_IDS).reduce((acc, [name, id]) => {
-      acc[id] = name;
-      return acc;
-    }, {});
-
-    // Transform coding challenges to use language names
-    const transformedChallenges = test.codingChallenges?.map(challenge => ({
-      ...challenge,
-      allowedLanguages: challenge.allowedLanguages?.map(langId => 
-        LANGUAGE_NAMES[langId] || langId
-      ),
-      languageImplementations: Object.entries(challenge.languageImplementations || {}).reduce((acc, [langId, impl]) => {
-        const langName = LANGUAGE_NAMES[langId] || langId;
-        acc[langName] = impl;
-        return acc;
-      }, {})
-    }));
+    // Transform the response
+    const transformedTest = {
+      _id: test._id,
+      uuid: test.uuid,
+      title: test.title,
+      description: test.description,
+      duration: test.duration,
+      type: test.type,
+      category: test.category,
+      difficulty: test.difficulty,
+      totalMarks: test.totalMarks,
+      status: test.status,
+      accessControl: test.accessControl?.type || 'public',
+      vendor: {
+        name: test.vendor?.name || 'Anonymous',
+        email: test.vendor?.email
+      },
+      mcqs: test.mcqs?.map(mcq => ({
+        _id: mcq._id,
+        question: mcq.question,
+        options: mcq.options,
+        marks: mcq.marks,
+        difficulty: mcq.difficulty,
+        answerType: mcq.answerType
+      })),
+      codingChallenges: test.codingChallenges?.map(challenge => ({
+        _id: challenge._id,
+        title: challenge.title,
+        description: challenge.description,
+        problemStatement: challenge.problemStatement,
+        constraints: challenge.constraints,
+        allowedLanguages: challenge.allowedLanguages, // Keep original languages
+        languageImplementations: challenge.languageImplementations, // Keep original implementations
+        marks: challenge.marks,
+        timeLimit: challenge.timeLimit,
+        memoryLimit: challenge.memoryLimit,
+        difficulty: challenge.difficulty,
+        testCases: challenge.testCases?.filter(tc => tc.isVisible).map(tc => ({
+          input: tc.input,
+          output: tc.output,
+          explanation: tc.explanation
+        }))
+      }))
+    };
 
     res.json({
-      message: "Test found successfully",
-      data: {
-        _id: test._id,
-        uuid: test.uuid,
-        title: test.title,
-        description: test.description,
-        duration: test.duration,
-        type: test.type,
-        category: test.category,
-        difficulty: test.difficulty,
-        totalMarks: test.totalMarks,
-        status: test.status,
-        accessControl: test.accessControl?.type || 'public',
-        vendor: {
-          name: test.vendor?.name || 'Anonymous',
-          email: test.vendor?.email
-        },
-        codingChallenges: transformedChallenges
-      }
+      message: "Test retrieved successfully",
+      data: transformedTest
     });
 
   } catch (error) {
     console.error('Error in getTestByUuid:', error);
     res.status(500).json({ 
-      message: "Internal server error",
-      error: error.message,
-      uuid: req.params.uuid
+      message: "Failed to retrieve test",
+      error: error.message
     });
   }
 };

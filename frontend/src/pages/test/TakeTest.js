@@ -224,15 +224,28 @@ export default function TakeTest() {
     try {
       setShowInstructions(false);
       
-      // Request fullscreen when starting test
+      // Get the document element
       const elem = document.documentElement;
+      
+      // Try different fullscreen methods
       if (elem.requestFullscreen) {
         await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) { // Safari
+        await elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) { // IE11
+        await elem.msRequestFullscreen();
+      } else if (elem.mozRequestFullScreen) { // Firefox
+        await elem.mozRequestFullScreen();
       }
+
       setIsFullScreen(true);
+      
     } catch (error) {
-      console.error('Error starting test:', error);
-      toast.error('Failed to start test');
+      console.error('Error entering fullscreen:', error);
+      toast.error('Failed to enter fullscreen mode. Please ensure your browser allows fullscreen.');
+      
+      // Still continue with the test even if fullscreen fails
+      setShowInstructions(false);
     }
   }, []);
 

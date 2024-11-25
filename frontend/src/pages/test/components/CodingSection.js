@@ -114,8 +114,11 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           setEditorValue(existingAnswer.code);
           setLanguage(existingAnswer.language);
         } else {
-          const firstLanguage = challenge.allowedLanguages[0];
-          const defaultLanguage = getLanguageName(firstLanguage);
+          // Get the first allowed language and properly convert it
+          const firstAllowedLanguage = challenge.allowedLanguages[0];
+          const defaultLanguage = typeof firstAllowedLanguage === 'number' 
+            ? LANGUAGE_NAMES[firstAllowedLanguage]?.toLowerCase()
+            : firstAllowedLanguage.toLowerCase();
 
           if (defaultLanguage) {
             const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || 
@@ -803,10 +806,13 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
       >
         {challenge.allowedLanguages.map(lang => {
-          const langName = getLanguageName(lang);
+          const langName = typeof lang === 'number' 
+            ? LANGUAGE_NAMES[lang]?.toLowerCase()
+            : lang.toLowerCase();
+          
           return (
             <option key={langName} value={langName}>
-              {LANGUAGE_NAMES[lang] || langName}
+              {typeof lang === 'number' ? LANGUAGE_NAMES[lang] : lang}
             </option>
           );
         })}
