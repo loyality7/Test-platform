@@ -56,6 +56,7 @@ import {
 } from '../controllers/analytics.controller.js';
 
 import { updateTestType } from '../controllers/test.controller.js';
+import { LANGUAGE_NAMES } from '../constants/languages.js';
 
 
 const router = express.Router();
@@ -891,17 +892,37 @@ router.get("/:uuid/take", auth, async (req, res) => {
       });
     }
 
+    // Transform coding challenges to use language names instead of IDs
+    const transformedCodingChallenges = test.codingChallenges.map(challenge => {
+      const transformedChallenge = challenge.toObject();
+      
+      // Convert language IDs to names in allowedLanguages array
+      transformedChallenge.allowedLanguages = challenge.allowedLanguages.map(langId => 
+        LANGUAGE_NAMES[langId] || langId
+      );
+
+      // Convert language IDs to names in languageImplementations object
+      const newImplementations = {};
+      Object.entries(challenge.languageImplementations).forEach(([langId, impl]) => {
+        const languageName = LANGUAGE_NAMES[langId] || langId;
+        newImplementations[languageName] = impl;
+      });
+      transformedChallenge.languageImplementations = newImplementations;
+
+      return transformedChallenge;
+    });
+
     res.json({
       message: "Test loaded successfully",
       data: {
-        id: test._id,  // Added test ID to response
-        uuid: test.uuid,  // Added UUID to response
+        id: test._id,
+        uuid: test.uuid,
         title: test.title,
         description: test.description,
         duration: test.duration,
         totalMarks: test.totalMarks,
         mcqs: test.mcqs,
-        codingChallenges: test.codingChallenges
+        codingChallenges: transformedCodingChallenges
       }
     });
 
