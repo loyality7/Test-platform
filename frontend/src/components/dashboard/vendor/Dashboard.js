@@ -1,6 +1,4 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-import AddUserToTest from '../../../components/test/Addusertotest';
 import { useAuth } from '../../../context/AuthContext';
 import { Box, Grid, Typography, CircularProgress, CssBaseline } from '@mui/material';
 import { useQuery } from 'react-query';
@@ -148,10 +146,6 @@ const Dashboard = () => {
           {renderContent()}
         </Box>
       </Layout>
-      
-      <Routes>
-        <Route path="test/:testId/add-user" element={<AddUserToTest />} />
-      </Routes>
     </>
   );
 };
