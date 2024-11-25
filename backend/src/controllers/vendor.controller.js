@@ -9,7 +9,6 @@ import Submission from "../models/submission.model.js";
 import { MCQSubmission } from "../models/mcqSubmission.model.js";
 import { CodingSubmission } from "../models/codingSubmission.model.js";
 import TestAnalytics from "../models/testAnalytics.model.js";
-import CodingChallenge from '../models/codingChallenge.model.js';
 
 // Add this helper function before getTestAnalytics
 const calculateAverageTestDuration = (tests) => {
@@ -1229,61 +1228,31 @@ export const getUserTestResults = async (req, res) => {
     .populate('user', 'name email')
     .populate('test', 'title passingMarks totalMarks mcqs codingChallenges')
     .populate('mcqSubmission')
-    .populate({
-      path: 'codingSubmission.challenges',
-      populate: {
-        path: 'challengeId',
-        model: 'CodingChallenge'
-      }
-    });
+    .populate('codingSubmission');
 
     if (!submission) {
       return res.status(404).json({ error: "No submission found for this user" });
     }
 
-    // Calculate MCQ details with correct marking scheme
+    // Calculate MCQ details with fixed scoring logic
     const mcqDetails = submission.mcqSubmission?.answers?.map(answer => {
       const question = submission.test.mcqs.find(q => 
         q._id.toString() === answer.questionId.toString()
       );
       
-      // Initialize scoring variables
+      // Fix for scoring logic
       let isCorrect = false;
-      let marks = 0;
-      const maxMarks = question?.marks || 0;
-
       if (question.answerType === 'single') {
         // For single answer questions
-        if (answer.selectedOptions.length === 1) {
-          if (question.correctOptions.length === 1 && 
-              answer.selectedOptions[0] === question.correctOptions[0]) {
-            // Give full marks if there's only one correct option and user selected it
-            marks = maxMarks;
-            isCorrect = true;
-          } else if (question.correctOptions.includes(answer.selectedOptions[0])) {
-            // Give 2 marks if selected option is one of multiple correct options
-            marks = 2;
-            isCorrect = true;
-          }
-        }
+        isCorrect = answer.selectedOptions.length === 1 && 
+                   answer.selectedOptions[0] === question.correctOptions[0];
       } else {
         // For multiple answer questions
-        const correctSelectedCount = answer.selectedOptions.filter(opt => 
-          question.correctOptions.includes(opt)
-        ).length;
-
-        if (correctSelectedCount > 0) {
-          if (correctSelectedCount === question.correctOptions.length && 
-              answer.selectedOptions.length === question.correctOptions.length) {
-            // Give full marks if all correct options are selected
-            marks = maxMarks;
-            isCorrect = true;
-          } else {
-            // Give 2 marks if at least one correct option is selected
-            marks = 2;
-            isCorrect = true;
-          }
-        }
+        isCorrect = 
+          // Check if all selected options are correct
+          answer.selectedOptions.every(opt => question.correctOptions.includes(opt)) &&
+          // Check if all correct options are selected
+          question.correctOptions.every(opt => answer.selectedOptions.includes(opt));
       }
 
       return {
@@ -1292,12 +1261,11 @@ export const getUserTestResults = async (req, res) => {
         selectedOptions: answer.selectedOptions,
         correctOptions: question?.correctOptions,
         isCorrect: isCorrect,
-        marks: marks,
-        maxMarks: maxMarks,
+        marks: isCorrect ? question?.marks : 0,
+        maxMarks: question?.marks,
         timeTaken: answer.timeTaken,
         submittedAt: answer.submittedAt,
-        answerType: question?.answerType,
-        partiallyCorrect: marks > 0 && marks < maxMarks
+        answerType: question?.answerType
       };
     }) || [];
 
@@ -1349,23 +1317,6 @@ export const getUserTestResults = async (req, res) => {
         correctAnswers: mcqDetails.filter(m => m.isCorrect).length,
         wrongAnswers: mcqDetails.filter(m => !m.isCorrect).length,
         detailedAnswers: mcqDetails
-      },
-      codingSection: {
-        totalChallenges: submission.test.codingChallenges?.length || 0,
-        attemptedChallenges: submission.codingSubmission?.challenges?.length || 0,
-        challenges: submission.codingSubmission?.challenges?.map(challenge => ({
-          challengeId: challenge.challengeId._id,
-          title: challenge.challengeId.title,
-          submissions: challenge.submissions.map(sub => ({
-            code: sub.code,
-            language: sub.language,
-            status: sub.status,
-            marks: sub.marks,
-            maxMarks: challenge.challengeId.marks,
-            submittedAt: sub.submittedAt,
-            testCaseResults: sub.testCaseResults
-          }))
-        })) || []
       }
     };
 
