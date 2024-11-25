@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import TestRegistration from "../models/testRegistration.model.js";
 import Submission from '../models/submission.model.js';
-import { LANGUAGE_IDS } from '../constants/languages.js';
+import { LANGUAGE_IDS, LANGUAGE_NAMES } from '../constants/languages.js';
 
 export const createTest = async (req, res) => {
   try {
@@ -228,10 +228,7 @@ export const getTestById = async (req, res) => {
       return res.status(404).json({ error: "Test not found" });
     }
 
-    // Simplified access control:
-    // - Admin can access all tests
-    // - Vendor can access their own tests
-    // - Regular users can only access published tests
+    // Check authorization
     if (!req.user.isAdmin && 
         test.vendor._id.toString() !== req.user._id.toString() && 
         test.status === 'draft') {
@@ -260,7 +257,11 @@ export const getTestById = async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ error: "Invalid test ID format" });
     }
-    res.status(500).json({ error: error.message });
+    console.error('Error in getTestById:', error);
+    res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

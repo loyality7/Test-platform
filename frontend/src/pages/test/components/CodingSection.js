@@ -21,7 +21,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const [showLineNumbers, setShowLineNumbers] = useState(true);
   const [wordWrap, setWordWrap] = useState(true);
   const [autoComplete, setAutoComplete] = useState(true);
-  const [editorValue, setEditorValue] = useState('// Write your code here\n');
+  const [editorValue, setEditorValue] = useState('// Please select a language to start coding\n');
   const [executingTests, setExecutingTests] = useState(new Set());
   const [layout, setLayout] = useState({
     leftPanel: 35,
@@ -29,6 +29,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     isDragging: false
   });
   const [isExecuting, setIsExecuting] = useState(false);
+  const [challengeStartTime, setChallengeStartTime] = useState(Date.now());
 
   // Constants
   const MIN_PANEL_WIDTH = 20;
@@ -44,6 +45,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
   // Update handleEditorChange to use optional chaining
   const handleEditorChange = useCallback((value) => {
+    console.log('Editor value changed:', value);
     setEditorValue(value);
     
     if (challenge?._id) {
@@ -54,8 +56,8 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           language: language
         }
       };
+      console.log('Updating answers to:', newAnswers);
       memoizedSetAnswers(newAnswers);
-      console.log('Updated answers:', newAnswers);
     }
   }, [answers, challenge?._id, language, memoizedSetAnswers]);
 
@@ -87,7 +89,9 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         const response = await apiService.get(`tests/parse/${uuid}`);
 
         if (response?.data?.id) {
+          // Store both the ID and the full test data
           localStorage.setItem('currentTestId', response.data.id);
+          localStorage.setItem('currentTest', JSON.stringify(response.data));
         }
       } catch (error) {
         console.error('Error parsing test UUID:', error);
@@ -97,40 +101,69 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
       }
     };
 
-    if (!localStorage.getItem('currentTestId')) {
-      parseTestUUID();
-    }
+    // Clear existing test ID when component mounts
+    localStorage.removeItem('currentTestId');
+    parseTestUUID();
   }, []);
 
-  // Update useEffect for challenge changes to use the API data
+  // Update useEffect for challenge changes
   useEffect(() => {
     if (challenges?.length > 0) {
+      // Track time spent on previous challenge before switching
+      const timeSpent = (Date.now() - challengeStartTime) / 1000;
+      setAnalytics(prev => ({
+        ...prev,
+        codingMetrics: {
+          ...prev.codingMetrics,
+          timePerChallenge: {
+            ...prev.codingMetrics.timePerChallenge,
+            [currentChallenge]: (prev.codingMetrics.timePerChallenge[currentChallenge] || 0) + timeSpent
+          }
+        }
+      }));
+
+      // Reset start time for new challenge
+      setChallengeStartTime(Date.now());
+
       const challenge = challenges[currentChallenge];
+      console.log('Setting up challenge:', challenge);
+      
       if (challenge?.allowedLanguages?.length > 0) {
-        // Get the current language or use the first allowed language as default
-        const currentLanguage = language || challenge.allowedLanguages[0].toLowerCase();
-        setLanguage(currentLanguage);
-        
-        // Get the existing answer or use the default code for the language
+        // Check if there's an existing answer with a language
         const existingAnswer = answers[challenge._id];
-        const defaultCode = challenge.languageImplementations?.[currentLanguage]?.visibleCode || '// Write your code here\n';
         
-        if (!existingAnswer) {
-          setEditorValue(defaultCode);
-          setAnswers(prev => ({
-            ...prev,
+        if (existingAnswer?.language) {
+          // Use existing language if available
+          console.log('Using existing language:', existingAnswer.language);
+          setLanguage(existingAnswer.language);
+          setEditorValue(existingAnswer.code || '// Write your code here\n');
+        } else {
+          // Get first allowed language
+          const defaultLanguage = challenge.allowedLanguages[0];
+          console.log('Setting default language:', defaultLanguage);
+          setLanguage(defaultLanguage);
+          
+          // Get default code for this language
+          const defaultCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || '// Write your code here\n';
+          console.log('Setting default code:', defaultCode);
+          
+          // Initialize answers
+          const newAnswers = {
+            ...answers,
             [challenge._id]: {
               code: defaultCode,
-              language: currentLanguage
+              language: defaultLanguage
             }
-          }));
-        } else {
-          setEditorValue(existingAnswer.code);
-          setLanguage(existingAnswer.language);
+          };
+          console.log('Setting answers to:', newAnswers);
+          memoizedSetAnswers(newAnswers);
+          
+          // Set editor value
+          setEditorValue(defaultCode);
         }
       }
     }
-  }, [challenges, currentChallenge, answers, setAnswers, language]);
+  }, [challenges, currentChallenge, answers, memoizedSetAnswers, challengeStartTime, setAnalytics]);
 
   // Handle left panel resize
   const handleLeftResize = useCallback((e) => {
@@ -187,41 +220,6 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     };
   }, [layout.isDragging, handleLeftResize, handleRightResize]);
 
-  // Debug useEffect
-  useEffect(() => {
-    console.log('Challenges changed:', challenges);
-    console.log('Current challenge:', currentChallenge);
-    console.log('Current language:', language);
-    console.log('Current answers:', answers);
-  }, [challenges, currentChallenge, language, answers]);
-
-  // Add this debug useEffect to track state changes
-  useEffect(() => {
-    console.log('Answers state updated:', answers);
-  }, [answers]);
-
-  // Track time per challenge
-  useEffect(() => {
-    const startTime = Date.now();
-    return () => {
-      setAnalytics(prev => {
-        const updated = {
-          ...prev,
-          codingMetrics: {
-            ...prev.codingMetrics,
-            timePerChallenge: {
-              ...prev.codingMetrics.timePerChallenge,
-              [currentChallenge]: (prev.codingMetrics.timePerChallenge[currentChallenge] || 0) + 
-                                 (Date.now() - startTime) / 1000
-            }
-          }
-        };
-        updateLocalAnalytics(updated);
-        return updated;
-      });
-    };
-  }, [currentChallenge, setAnalytics]);
-
   // Now your early returns are after all state declarations
   if (!challenges || challenges.length === 0) {
     return <div>No challenges available</div>;
@@ -231,16 +229,23 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     return <div>Challenge not found</div>;
   }
 
-  console.log('Current Test Results:', testResults);
-
   const handleSubmitChallenge = async () => {
     try {
       const currentTestId = localStorage.getItem('currentTestId');
       
       if (!currentTestId) {
+        console.error('No test ID found in localStorage');
         toast.error('Test ID not found. Please reload the page.');
         return;
       }
+
+      console.log('Submitting for test ID:', currentTestId);
+      
+      console.log('Executing code with payload:', {
+        code: answers[challenge._id]?.code,
+        language: language,
+        testCases: challenge.testCases
+      });
 
       console.log('Starting submission...');
       setSubmissionStatus(prev => ({ ...prev, [challenge._id]: 'submitting' }));
@@ -324,8 +329,9 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         }]
       };
 
+      console.log('Submitting with payload:', submissionData);
       const response = await apiService.post('submissions/submit/coding', submissionData);
-      console.log('Submission successful:', response);
+      console.log('Submission response:', response);
 
       if (response?.submission) {
         // Immediately update submission status to 'submitted'
@@ -339,9 +345,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         // Check if all challenges are completed
         const allChallengesCompleted = challenges.every(ch => submissionStatus[ch._id] === 'submitted');
         if (allChallengesCompleted) {
-          console.log('All challenges completed!');
           toast.success('All coding challenges completed!');
-          // Ensure onSubmitCoding is called with the correct data
           onSubmitCoding({
             codingSubmission: response.submission.codingSubmission,
             totalScore: response.submission.totalScore || 0
@@ -358,8 +362,11 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
     } catch (error) {
       console.error('Submission Error:', error);
-      toast.error('Failed to submit: ' + (error.response?.message || error.message));
-      // Reset submission status on error
+      if (error.response?.data?.requiresRegistration) {
+        toast.error('Please register or login to submit your solution');
+      } else {
+        toast.error('Failed to submit: ' + (error.response?.data?.error || error.message));
+      }
       setSubmissionStatus(prev => ({
         ...prev,
         [challenge._id]: undefined
@@ -369,77 +376,111 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
   // Update handleExecuteCode to properly handle the response
   const handleExecuteCode = async () => {
+    console.log('=== Execute Code Started ===');
+    console.log('Challenge:', challenge);
+    console.log('Language:', language);
+    console.log('Answers:', answers);
+    
     try {
+      if (!language) {
+        console.log('No language selected');
+        toast.error('Please select a language first');
+        return;
+      }
+
+      if (!challenge?._id) {
+        console.log('No challenge ID found');
+        toast.error('Challenge not found');
+        return;
+      }
+
       setIsExecuting(true);
       setShowTestPanel(true);
       
+      // Get current code
       const currentCode = answers[challenge._id]?.code;
+      console.log('Current code to execute:', currentCode);
+      
       if (!currentCode?.trim()) {
+        console.log('No code to execute');
         toast.error('Please write some code before running');
         return;
       }
 
-      // Track compilation attempt
-      setAnalytics(prev => ({
-        ...prev,
-        codingMetrics: {
-          ...prev.codingMetrics,
-          compilationAttempts: {
-            ...prev.codingMetrics.compilationAttempts,
-            [challenge._id]: (prev.codingMetrics.compilationAttempts[challenge._id] || 0) + 1
-          }
-        }
-      }));
+      // Get visible test cases
+      const visibleTestCases = challenge.testCases?.filter(test => !test.isHidden);
+      console.log('Visible test cases:', visibleTestCases);
 
-      // Get all non-hidden test cases
-      const visibleTestCases = challenge.testCases.filter(test => !test.isHidden);
-      const results = [];
-
-      // Execute each visible test case
-      for (const testCase of visibleTestCases) {
-        setExecutingTests(prev => new Set(prev).add(testCase.id));
-        
-        const response = await apiService.post('code/execute', {
-          code: currentCode,
-          language: language,
-          inputs: testCase.input
-        });
-
-        // Handle different response statuses
-        let output = '';
-        let error = null;
-        let status = response?.status || 'Error';
-
-        if (status === 'Runtime Error (NZEC)' || status !== 'Accepted') {
-          error = response?.error || 'Execution failed';
-          output = ''; // Clear output on error
-        } else {
-          output = response?.output || '';
-        }
-
-        const cleanOutput = output.trim();
-        const expectedOutput = testCase.output?.trim() || '';
-        const passed = status === 'Accepted' && cleanOutput === expectedOutput;
-
-        results.push({
-          input: testCase.input || '',
-          expectedOutput: expectedOutput,
-          actualOutput: cleanOutput,
-          error: error,
-          passed: passed,
-          executionTime: response?.executionTime || 0,
-          memory: response?.memory || 0,
-          status: status
-        });
-
-        setExecutingTests(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(testCase.id);
-          return newSet;
-        });
+      if (!visibleTestCases?.length) {
+        console.log('No test cases found');
+        toast.error('No test cases available');
+        return;
       }
 
-      // Update test results
+      const results = [];
+
+      // Execute each test case
+      for (const testCase of visibleTestCases) {
+        console.log('Executing test case:', testCase);
+        setExecutingTests(prev => new Set(prev).add(testCase.id));
+        
+        const executionPayload = {
+          code: currentCode,
+          language: language.toLowerCase(), // Make sure language is lowercase
+          inputs: testCase.input
+        };
+        
+        console.log('Sending API request with payload:', executionPayload);
+        
+        try {
+          const response = await apiService.post('code/execute', executionPayload);
+          console.log('API Response:', response);
+          
+          // Process response
+          let output = '';
+          let error = null;
+          let status = response?.status || 'Error';
+
+          if (status === 'Runtime Error (NZEC)' || status !== 'Accepted') {
+            error = response?.error || 'Execution failed';
+            console.log('Execution error:', error);
+          } else {
+            output = response?.output || '';
+            console.log('Execution output:', output);
+          }
+
+          // Compare output
+          const cleanOutput = output.trim();
+          const expectedOutput = testCase.output?.trim() || '';
+          const passed = status === 'Accepted' && cleanOutput === expectedOutput;
+
+          results.push({
+            input: testCase.input || '',
+            expectedOutput: expectedOutput,
+            actualOutput: cleanOutput,
+            error: error,
+            passed: passed,
+            executionTime: response?.executionTime || 0,
+            memory: response?.memory || 0,
+            status: status
+          });
+
+          console.log('Test case result:', results[results.length - 1]);
+
+        } catch (error) {
+          console.error('API call failed:', error);
+          toast.error(`API Error: ${error.message}`);
+        } finally {
+          setExecutingTests(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(testCase.id);
+            return newSet;
+          });
+        }
+      }
+
+      // Update UI with results
+      console.log('All test results:', results);
       setTestResults(prev => ({
         ...prev,
         [challenge._id]: {
@@ -450,34 +491,11 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         }
       }));
 
-      // Track test case runs and errors
-      setAnalytics(prev => ({
-        ...prev,
-        codingMetrics: {
-          ...prev.codingMetrics,
-          testCaseRuns: {
-            ...prev.codingMetrics.testCaseRuns,
-            [challenge._id]: (prev.codingMetrics.testCaseRuns[challenge._id] || 0) + 1
-          },
-          errorFrequency: {
-            ...prev.codingMetrics.errorFrequency,
-            [challenge._id]: {
-              ...prev.codingMetrics.errorFrequency[challenge._id],
-              [results.find(r => r.error)?.error?.type]: (
-                prev.codingMetrics.errorFrequency[challenge._id]?.[results.find(r => r.error)?.error?.type] || 0
-              ) + 1
-            }
-          }
-        }
-      }));
-
-      return results;
-
     } catch (error) {
-      console.error('Code execution error:', error);
-      toast.error('Failed to execute code: ' + (error.response?.data?.message || error.message));
-      return [];
+      console.error('Execution error:', error);
+      toast.error('Failed to execute code: ' + (error.message || 'Unknown error'));
     } finally {
+      console.log('=== Execute Code Finished ===');
       setIsExecuting(false);
       setExecutingTests(new Set());
     }
@@ -564,6 +582,43 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     const currentResults = testResults[challenge?._id];
     
     if (!currentResults) {
+      if (isExecuting) {
+        return (
+          <div className="space-y-4">
+            {challenge?.testCases
+              ?.filter(testCase => !testCase.isHidden)
+              ?.map((_, index) => (
+                <div key={index} className="bg-[#2d2d2d] p-4 rounded animate-pulse">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                      <span className="text-gray-400">Running Test Case {index + 1}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Input skeleton */}
+                  <div className="space-y-2 mb-3">
+                    <div className="text-gray-400 text-xs">Input:</div>
+                    <div className="h-4 bg-[#3c3c3c] rounded w-3/4"></div>
+                  </div>
+
+                  {/* Expected Output skeleton */}
+                  <div className="space-y-2 mb-3">
+                    <div className="text-gray-400 text-xs">Expected Output:</div>
+                    <div className="h-4 bg-[#3c3c3c] rounded w-1/2"></div>
+                  </div>
+
+                  {/* Your Output skeleton */}
+                  <div className="space-y-2">
+                    <div className="text-gray-400 text-xs">Your Output:</div>
+                    <div className="h-4 bg-[#3c3c3c] rounded w-2/3"></div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        );
+      }
+      
       return (
         <div className="text-gray-400 text-center py-4">
           Run your code to see test results
@@ -736,33 +791,50 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     );
   };
 
-  // Update handleLanguageChange to preserve user code when changing languages
+  // 4. Add these two functions before the return statement
   const handleLanguageChange = (newLanguage) => {
+    console.log('Language changing to:', newLanguage);
     setLanguage(newLanguage);
     
-    // Get the default code for the new language
-    const defaultCode = challenge?.languageImplementations?.[newLanguage]?.visibleCode || '// Write your code here\n';
-    
-    // Update editor value and answers state
-    setEditorValue(defaultCode);
-    setAnswers(prev => ({
-      ...prev,
-      [challenge._id]: {
-        code: defaultCode,
-        language: newLanguage
-      }
-    }));
+    if (challenge?._id) {
+      const defaultCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || '// Write your code here\n';
+      const newAnswers = {
+        ...answers,
+        [challenge._id]: {
+          code: defaultCode,
+          language: newLanguage
+        }
+      };
+      console.log('Setting answers for language change:', newAnswers);
+      setAnswers(newAnswers);
+      setEditorValue(defaultCode);
+    }
   };
 
-  // Add this function near the top of the component, after state declarations
-  const updateLocalAnalytics = (analytics) => {
-    try {
-      const testId = localStorage.getItem('currentTestId');
-      if (testId) {
-        localStorage.setItem(`analytics_${testId}`, JSON.stringify(analytics));
-      }
-    } catch (error) {
-      console.error('Error updating local analytics:', error);
+  const renderLanguageDropdown = () => {
+    if (!challenge?.allowedLanguages) return null;
+
+    return (
+      <select
+        value={language}
+        onChange={(e) => handleLanguageChange(e.target.value)}
+        className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
+      >
+        <option value="">Select Language</option>
+        {challenge.allowedLanguages.map(lang => (
+          <option key={lang} value={lang}>
+            {lang}
+          </option>
+        ))}
+      </select>
+    );
+  };
+
+  // Update the editor mount handler to use the refs
+  const handleEditorMount = (editor, monaco) => {
+    if (language) {
+      editor.focus();
+      monaco.editor.setModelLanguage(editor.getModel(), language.toLowerCase());
     }
   };
 
@@ -781,15 +853,7 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
           </div>
 
           <div className="flex items-center gap-2">
-            <select
-              value={language}
-              onChange={(e) => handleLanguageChange(e.target.value)}
-              className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
-            >
-              {challenge?.allowedLanguages?.map(lang => (
-                <option key={lang} value={lang.toLowerCase()}>{lang}</option>
-              ))}
-            </select>
+            {renderLanguageDropdown()}
 
             <div className="flex items-center gap-1">
               <button
@@ -818,13 +882,16 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
             </div>
 
             <button 
-              onClick={handleExecuteCode}
+              onClick={() => {
+                console.log('Run button clicked!');
+                handleExecuteCode();
+              }}
               disabled={isExecuting}
               className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 
                      disabled:opacity-50 flex items-center gap-1 text-xs"
             >
               <Play className="w-3.5 h-3.5" />
-              Run
+              Run {isExecuting ? '...' : ''}
             </button>
             {renderSubmitButton()}
           </div>
@@ -892,14 +959,16 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         <div className="flex-1 flex flex-col">
           <MonacoEditor
             height="100%"
-            language={language}
+            language={language.toLowerCase()}
             theme={theme}
             value={editorValue}
             onChange={handleEditorChange}
-            options={editorOptions}
-            onMount={(editor, monaco) => {
-              editor.focus();
+            options={{
+              ...editorOptions,
+              readOnly: !language,
+              domReadOnly: !language,
             }}
+            onMount={handleEditorMount}
             wrapperClassName="monaco-editor-wrapper"
             className="monaco-editor"
           />
