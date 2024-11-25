@@ -1228,7 +1228,13 @@ export const getUserTestResults = async (req, res) => {
     .populate('user', 'name email')
     .populate('test', 'title passingMarks totalMarks mcqs codingChallenges')
     .populate('mcqSubmission')
-    .populate('codingSubmission');
+    .populate({
+      path: 'codingSubmission.challenges',
+      populate: {
+        path: 'challengeId',
+        model: 'CodingChallenge'
+      }
+    });
 
     if (!submission) {
       return res.status(404).json({ error: "No submission found for this user" });
@@ -1342,6 +1348,23 @@ export const getUserTestResults = async (req, res) => {
         correctAnswers: mcqDetails.filter(m => m.isCorrect).length,
         wrongAnswers: mcqDetails.filter(m => !m.isCorrect).length,
         detailedAnswers: mcqDetails
+      },
+      codingSection: {
+        totalChallenges: submission.test.codingChallenges?.length || 0,
+        attemptedChallenges: submission.codingSubmission?.challenges?.length || 0,
+        challenges: submission.codingSubmission?.challenges?.map(challenge => ({
+          challengeId: challenge.challengeId._id,
+          title: challenge.challengeId.title,
+          submissions: challenge.submissions.map(sub => ({
+            code: sub.code,
+            language: sub.language,
+            status: sub.status,
+            marks: sub.marks,
+            maxMarks: challenge.challengeId.marks,
+            submittedAt: sub.submittedAt,
+            testCaseResults: sub.testCaseResults
+          }))
+        })) || []
       }
     };
 
