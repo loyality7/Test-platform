@@ -3,6 +3,7 @@ import { CodingSubmission } from '../models/codingSubmission.model.js';
 import { MCQSubmission } from '../models/mcqSubmission.model.js';
 import Submission from '../models/submission.model.js';
 import TestRegistration from '../models/testRegistration.model.js';
+import mongoose from 'mongoose';
 
 // Add this helper function at the top
 const validateTestAccess = async (testId, userId, userRole) => {
@@ -498,55 +499,130 @@ export const getTestResults = async (req, res) => {
   try {
     const { testId } = req.params;
     
-    // Validate test access
-    const accessResult = await validateTestAccess(testId, req.user._id, req.user.role);
-    if (!accessResult.valid) {
-      return res.status(403).json({ error: accessResult.message });
+    // Validate testId
+    if (!testId || !mongoose.Types.ObjectId.isValid(testId)) {
+      return res.status(400).json({ 
+        message: 'Invalid test ID format'
+      });
     }
 
-    const submissions = await Submission.find({ 
-      test: testId,
-      status: 'completed'  // Only get completed submissions
-    })
-    .populate('user', 'name email')
-    .lean();
+    // Get MCQ submissions
+    const mcqSubmissions = await MCQSubmission.find({ testId })
+      .populate('userId', 'name email')
+      .populate('questionId', 'correctOptions marks')
+      .lean();
 
-    const results = {
-      testId,
-      submissions: submissions.map(sub => ({
-        userId: sub.user._id,
-        userName: sub.user.name,
-        userEmail: sub.user.email,
-        mcq: {
-          answers: sub.mcqSubmission?.answers || [],
-          score: sub.mcqSubmission?.totalScore || 0,
-          submittedAt: sub.mcqSubmission?.submittedAt
-        },
-        coding: {
-          challenges: sub.codingSubmission?.challenges || [],
-          score: sub.codingSubmission?.totalScore || 0,
-          submittedAt: sub.codingSubmission?.submittedAt
-        },
-        totalScore: sub.totalScore,
-        startTime: sub.startTime,
-        endTime: sub.endTime,
-        version: sub.version
-      })),
-      stats: {
-        totalSubmissions: submissions.length,
-        averageScore: submissions.length > 0 
-          ? Math.round(submissions.reduce((sum, sub) => sum + sub.totalScore, 0) / submissions.length)
-          : 0,
-        highestScore: Math.max(...submissions.map(sub => sub.totalScore), 0),
-        lowestScore: Math.min(...submissions.map(sub => sub.totalScore), 0)
+    // Get coding submissions
+    const codingSubmissions = await CodingSubmission.find({ testId })
+      .populate('challengeId', 'title maxScore')
+      .lean();
+
+    // Group submissions by user
+    const userSubmissions = {};
+    
+    // Process MCQ submissions
+    mcqSubmissions.forEach(sub => {
+      const userId = sub.userId._id.toString();
+      if (!userSubmissions[userId]) {
+        userSubmissions[userId] = {
+          candidateId: userId,
+          candidateName: sub.userId.name,
+          email: sub.userId.email,
+          mcqScore: 0,
+          codingScore: 0,
+          totalScore: 0,
+          submittedAt: sub.submittedAt,
+          status: 'completed',
+          details: {
+            mcqAnswers: [],
+            codingChallenges: []
+          }
+        };
       }
-    };
+      
+      userSubmissions[userId].details.mcqAnswers.push({
+        questionId: sub.questionId._id,
+        selectedAnswer: sub.selectedOptions,
+        isCorrect: sub.isCorrect,
+        marks: sub.marksObtained,
+        maxMarks: sub.questionId.marks
+      });
+      
+      userSubmissions[userId].mcqScore += sub.marksObtained;
+    });
 
-    res.status(200).json(results);
+    // Process coding submissions
+    codingSubmissions.forEach(sub => {
+      const userId = sub.userId.toString();
+      if (!userSubmissions[userId]) {
+        userSubmissions[userId] = {
+          candidateId: userId,
+          mcqScore: 0,
+          codingScore: 0,
+          totalScore: 0,
+          status: 'completed',
+          details: {
+            mcqAnswers: [],
+            codingChallenges: []
+          }
+        };
+      }
+      
+      userSubmissions[userId].details.codingChallenges.push({
+        challengeId: sub.challengeId._id,
+        title: sub.challengeId.title,
+        bestScore: sub.bestScore,
+        maxScore: sub.challengeId.maxScore,
+        submissions: sub.submissions.map(attempt => ({
+          code: attempt.code,
+          language: attempt.language,
+          status: attempt.status,
+          executionTime: attempt.executionDetails.totalExecutionTime,
+          memory: attempt.executionDetails.memory,
+          testCaseResults: attempt.testCaseResults,
+          marks: attempt.marks,
+          maxMarks: attempt.maxMarks
+        }))
+      });
+      
+      userSubmissions[userId].codingScore += sub.bestScore;
+    });
+
+    // Calculate total scores and percentages
+    Object.values(userSubmissions).forEach(submission => {
+      const totalMaxMCQScore = submission.details.mcqAnswers.reduce((sum, q) => sum + q.maxMarks, 0);
+      const totalMaxCodingScore = submission.details.codingChallenges.reduce((sum, c) => sum + c.maxScore, 0);
+      
+      submission.mcqScore = totalMaxMCQScore > 0 
+        ? Math.round((submission.mcqScore / totalMaxMCQScore) * 100) 
+        : 0;
+      
+      submission.codingScore = totalMaxCodingScore > 0 
+        ? Math.round((submission.codingScore / totalMaxCodingScore) * 100) 
+        : 0;
+      
+      submission.totalScore = Math.round((submission.mcqScore + submission.codingScore) / 2);
+    });
+
+    const results = Object.values(userSubmissions);
+
+    res.status(200).json({
+      testId,
+      submissions: results,
+      totalSubmissions: results.length,
+      summary: {
+        averageScore: results.length > 0 
+          ? Math.round(results.reduce((sum, sub) => sum + sub.totalScore, 0) / results.length) 
+          : 0,
+        totalCandidates: results.length,
+        completedSubmissions: results.filter(sub => sub.status === 'completed').length
+      }
+    });
+
   } catch (error) {
     console.error('Error in getTestResults:', error);
     res.status(500).json({ 
-      message: 'Error retrieving test results', 
+      message: 'Error retrieving test results',
       error: error.message 
     });
   }
