@@ -497,25 +497,58 @@ export const getMCQSubmissions = async (req, res) => {
 export const getTestResults = async (req, res) => {
   try {
     const { testId } = req.params;
+    
+    // Validate test access
+    const accessResult = await validateTestAccess(testId, req.user._id, req.user.role);
+    if (!accessResult.valid) {
+      return res.status(403).json({ error: accessResult.message });
+    }
 
-    const mcqSubmissions = await MCQSubmission.find({ testId })
-      .populate('questionId')
-      .populate('userId', 'name email');
-
-    const codingSubmissions = await CodingSubmission.find({ testId })
-      .populate('challengeId')
-      .populate('userId', 'name email');
+    const submissions = await Submission.find({ 
+      test: testId,
+      status: 'completed'  // Only get completed submissions
+    })
+    .populate('user', 'name email')
+    .lean();
 
     const results = {
       testId,
-      mcqSubmissions,
-      codingSubmissions,
-      totalSubmissions: mcqSubmissions.length + codingSubmissions.length
+      submissions: submissions.map(sub => ({
+        userId: sub.user._id,
+        userName: sub.user.name,
+        userEmail: sub.user.email,
+        mcq: {
+          answers: sub.mcqSubmission?.answers || [],
+          score: sub.mcqSubmission?.totalScore || 0,
+          submittedAt: sub.mcqSubmission?.submittedAt
+        },
+        coding: {
+          challenges: sub.codingSubmission?.challenges || [],
+          score: sub.codingSubmission?.totalScore || 0,
+          submittedAt: sub.codingSubmission?.submittedAt
+        },
+        totalScore: sub.totalScore,
+        startTime: sub.startTime,
+        endTime: sub.endTime,
+        version: sub.version
+      })),
+      stats: {
+        totalSubmissions: submissions.length,
+        averageScore: submissions.length > 0 
+          ? Math.round(submissions.reduce((sum, sub) => sum + sub.totalScore, 0) / submissions.length)
+          : 0,
+        highestScore: Math.max(...submissions.map(sub => sub.totalScore), 0),
+        lowestScore: Math.min(...submissions.map(sub => sub.totalScore), 0)
+      }
     };
 
     res.status(200).json(results);
   } catch (error) {
-    res.status(500).json({ message: 'Error retrieving test results', error: error.message });
+    console.error('Error in getTestResults:', error);
+    res.status(500).json({ 
+      message: 'Error retrieving test results', 
+      error: error.message 
+    });
   }
 };
 
