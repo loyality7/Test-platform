@@ -1227,8 +1227,14 @@ export const getUserTestResults = async (req, res) => {
     })
     .populate('user', 'name email')
     .populate('test', 'title passingMarks totalMarks mcqs codingChallenges')
-    .populate('mcqSubmission')
-    .populate('codingSubmission');
+    .populate({
+      path: 'codingSubmission',
+      populate: {
+        path: 'answers',
+        model: 'CodingSubmission'
+      }
+    })
+    .populate('mcqSubmission');
 
     if (!submission) {
       return res.status(404).json({ error: "No submission found for this user" });
@@ -1294,14 +1300,37 @@ export const getUserTestResults = async (req, res) => {
       };
     }) || [];
 
+    // Calculate coding details with proper population
+    const codingDetails = submission.codingSubmission?.answers?.map(answer => {
+      const challenge = submission.test.codingChallenges.find(c => 
+        c._id.toString() === answer.challengeId.toString()
+      );
+      
+      return {
+        challengeId: answer.challengeId,
+        title: challenge?.title,
+        code: answer.code,
+        language: answer.language,
+        score: answer.score,
+        maxMarks: challenge?.marks || 0,
+        earnedMarks: ((answer.score * challenge?.marks) / 100) || 0,
+        testCases: answer.testCases?.map(tc => ({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          actualOutput: tc.actualOutput,
+          passed: tc.passed,
+          error: tc.error
+        })) || [],
+        submittedAt: answer.submittedAt,
+        executionTime: answer.executionTime,
+        memory: answer.memory,
+        status: answer.status
+      };
+    }) || [];
+
     // Calculate scores
     const mcqScore = mcqDetails.reduce((total, mcq) => total + (mcq.marks || 0), 0);
-    const codingScore = submission.codingSubmission?.answers?.reduce((total, answer) => {
-      const challenge = submission.test.codingChallenges.find(
-        c => c._id.toString() === answer.challengeId.toString()
-      );
-      return total + ((answer.score * challenge?.marks) / 100 || 0);
-    }, 0) || 0;
+    const codingScore = codingDetails.reduce((total, c) => total + c.earnedMarks, 0);
 
     const totalScore = mcqScore + codingScore;
     const percentage = Math.round((totalScore / submission.test.totalMarks) * 100);
@@ -1345,9 +1374,10 @@ export const getUserTestResults = async (req, res) => {
       },
       codingSection: {
         totalChallenges: submission.test.codingChallenges.length,
-        attemptedChallenges: submission.codingSubmission?.answers?.length || 0,
-        detailedAnswers: submission.codingSubmission?.answers || []
-      } 
+        attemptedChallenges: codingDetails.length,
+        detailedAnswers: codingDetails,
+        totalScore: Math.round(codingScore)
+      }
     };
 
     res.json(result);
