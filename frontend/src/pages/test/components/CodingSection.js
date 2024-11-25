@@ -757,35 +757,29 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
   // Update handleLanguageChange
   const handleLanguageChange = (newLanguage) => {
-    console.log('Changing language to:', newLanguage); // Debug log
+    console.log('Changing language to:', newLanguage);
     
     if (!challenge?._id) return;
 
     // Convert language name to lowercase for consistency
     const normalizedLanguage = newLanguage.toLowerCase();
+    
+    // Get the visible code for the new language
+    const newLanguageVisibleCode = challenge.languageImplementations?.[normalizedLanguage]?.visibleCode || 
+                                  getDefaultCodeForLanguage(normalizedLanguage);
+
+    // Update editor value and answers state with the new language's visible code
+    setEditorValue(newLanguageVisibleCode);
+    setAnswers(prev => ({
+      ...prev,
+      [challenge._id]: {
+        code: newLanguageVisibleCode,
+        language: normalizedLanguage
+      }
+    }));
+    
+    // Update language state
     setLanguage(normalizedLanguage);
-    
-    // Get existing answer or create new one
-    const existingAnswer = answers[challenge._id];
-    
-    // Get the appropriate default code
-    const defaultCode = challenge.languageImplementations?.[normalizedLanguage]?.visibleCode || 
-                       getDefaultCodeForLanguage(normalizedLanguage);
-    
-    // Only update if we're changing to a new language
-    if (existingAnswer?.language !== normalizedLanguage) {
-      setEditorValue(defaultCode);
-      
-      const newAnswers = {
-        ...answers,
-        [challenge._id]: {
-          code: defaultCode,
-          language: normalizedLanguage
-        }
-      };
-      console.log('Updating answers:', newAnswers); // Debug log
-      setAnswers(newAnswers);
-    }
   };
 
   // Add this function near the top of the component, after state declarations
