@@ -1342,7 +1342,12 @@ export const getUserTestResults = async (req, res) => {
         correctAnswers: mcqDetails.filter(m => m.isCorrect).length,
         wrongAnswers: mcqDetails.filter(m => !m.isCorrect).length,
         detailedAnswers: mcqDetails
-      }
+      },
+      codingSection: {
+        totalChallenges: submission.test.codingChallenges.length,
+        attemptedChallenges: submission.codingSubmission?.answers?.length || 0,
+        detailedAnswers: submission.codingSubmission?.answers || []
+      } 
     };
 
     res.json(result);
