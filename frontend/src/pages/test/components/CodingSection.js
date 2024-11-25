@@ -107,31 +107,30 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     if (challenges?.length > 0) {
       const challenge = challenges[currentChallenge];
       if (challenge?.allowedLanguages?.length > 0) {
-        const defaultLanguage = challenge.allowedLanguages[0].toLowerCase();
-        setLanguage(defaultLanguage);
+        // Get the current language or use the first allowed language as default
+        const currentLanguage = language || challenge.allowedLanguages[0].toLowerCase();
+        setLanguage(currentLanguage);
         
-        // Initialize answers if they don't exist
+        // Get the existing answer or use the default code for the language
         const existingAnswer = answers[challenge._id];
+        const defaultCode = challenge.languageImplementations?.[currentLanguage]?.visibleCode || '// Write your code here\n';
+        
         if (!existingAnswer) {
-          const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || '// Write your code here\n';
-          setEditorValue(visibleCode);
-          
-          const newAnswers = {
-            ...answers,
+          setEditorValue(defaultCode);
+          setAnswers(prev => ({
+            ...prev,
             [challenge._id]: {
-              code: visibleCode,
-              language: defaultLanguage
+              code: defaultCode,
+              language: currentLanguage
             }
-          };
-          setAnswers(newAnswers);
-          console.log('Initialized answers:', newAnswers);
+          }));
         } else {
           setEditorValue(existingAnswer.code);
           setLanguage(existingAnswer.language);
         }
       }
     }
-  }, [challenges, currentChallenge, answers, setAnswers]);
+  }, [challenges, currentChallenge, answers, setAnswers, language]);
 
   // Handle left panel resize
   const handleLeftResize = useCallback((e) => {
@@ -741,27 +740,18 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
   const handleLanguageChange = (newLanguage) => {
     setLanguage(newLanguage);
     
-    // Preserve existing code unless explicitly resetting
-    if (challenge?._id && answers[challenge._id]?.code) {
-      setAnswers(prev => ({
-        ...prev,
-        [challenge._id]: {
-          ...prev[challenge._id],
-          language: newLanguage
-        }
-      }));
-    } else {
-      // Only use default code if there's no existing code
-      const visibleCode = challenge.languageImplementations?.[newLanguage]?.visibleCode || '';
-      setEditorValue(visibleCode);
-      setAnswers(prev => ({
-        ...prev,
-        [challenge._id]: {
-          code: visibleCode,
-          language: newLanguage
-        }
-      }));
-    }
+    // Get the default code for the new language
+    const defaultCode = challenge?.languageImplementations?.[newLanguage]?.visibleCode || '// Write your code here\n';
+    
+    // Update editor value and answers state
+    setEditorValue(defaultCode);
+    setAnswers(prev => ({
+      ...prev,
+      [challenge._id]: {
+        code: defaultCode,
+        language: newLanguage
+      }
+    }));
   };
 
   // Add this function near the top of the component, after state declarations
