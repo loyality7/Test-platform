@@ -1221,7 +1221,6 @@ export const getUserTestResults = async (req, res) => {
       });
     }
 
-    // Get user's submission with all related data
     const submission = await Submission.findOne({
       test: testId,
       user: userId
@@ -1235,58 +1234,54 @@ export const getUserTestResults = async (req, res) => {
       return res.status(404).json({ error: "No submission found for this user" });
     }
 
-    // Calculate MCQ details
+    // Calculate MCQ details with fixed scoring logic
     const mcqDetails = submission.mcqSubmission?.answers?.map(answer => {
-      const question = test.mcqs.find(q => q._id.toString() === answer.questionId.toString());
+      const question = submission.test.mcqs.find(q => 
+        q._id.toString() === answer.questionId.toString()
+      );
+      
+      // Fix for scoring logic
+      let isCorrect = false;
+      if (question.answerType === 'single') {
+        // For single answer questions
+        isCorrect = answer.selectedOptions.length === 1 && 
+                   answer.selectedOptions[0] === question.correctOptions[0];
+      } else {
+        // For multiple answer questions
+        isCorrect = 
+          // Check if all selected options are correct
+          answer.selectedOptions.every(opt => question.correctOptions.includes(opt)) &&
+          // Check if all correct options are selected
+          question.correctOptions.every(opt => answer.selectedOptions.includes(opt));
+      }
+
       return {
         questionId: answer.questionId,
         question: question?.question,
         selectedOptions: answer.selectedOptions,
         correctOptions: question?.correctOptions,
-        isCorrect: answer.isCorrect,
-        marks: answer.isCorrect ? question?.marks : 0,
+        isCorrect: isCorrect,
+        marks: isCorrect ? question?.marks : 0,
         maxMarks: question?.marks,
         timeTaken: answer.timeTaken,
-        submittedAt: answer.submittedAt
-      };
-    }) || [];
-
-    // Calculate coding challenge details
-    const codingDetails = submission.codingSubmission?.answers?.map(answer => {
-      const challenge = test.codingChallenges.find(
-        c => c._id.toString() === answer.challengeId.toString()
-      );
-      return {
-        challengeId: answer.challengeId,
-        title: challenge?.title,
-        language: answer.language,
-        code: answer.code,
-        score: answer.score,
-        maxMarks: challenge?.marks,
-        marksObtained: (answer.score * challenge?.marks) / 100,
-        testCaseResults: answer.testCaseResults?.map(result => ({
-          input: result.input,
-          expectedOutput: result.expectedOutput,
-          actualOutput: result.actualOutput,
-          passed: result.passed,
-          error: result.error,
-          executionTime: result.executionTime,
-          memoryUsed: result.memoryUsed
-        })),
-        timeTaken: answer.timeTaken,
         submittedAt: answer.submittedAt,
-        compilationError: answer.compilationError,
-        runtimeError: answer.runtimeError
+        answerType: question?.answerType
       };
     }) || [];
 
     // Calculate scores
     const mcqScore = mcqDetails.reduce((total, mcq) => total + (mcq.marks || 0), 0);
-    const codingScore = codingDetails.reduce((total, challenge) => 
-      total + (challenge.marksObtained || 0), 0);
-    const totalScore = mcqScore + codingScore;
+    const codingScore = submission.codingSubmission?.answers?.reduce((total, answer) => {
+      const challenge = submission.test.codingChallenges.find(
+        c => c._id.toString() === answer.challengeId.toString()
+      );
+      return total + ((answer.score * challenge?.marks) / 100 || 0);
+    }, 0) || 0;
 
-    // Format comprehensive response
+    const totalScore = mcqScore + codingScore;
+    const percentage = Math.round((totalScore / submission.test.totalMarks) * 100);
+
+    // Format response
     const result = {
       candidateInfo: {
         candidateId: submission.user._id,
@@ -1294,11 +1289,11 @@ export const getUserTestResults = async (req, res) => {
         email: submission.user.email
       },
       testInfo: {
-        testId: test._id,
+        testId: submission.test._id,
         testTitle: submission.test.title,
         totalMarks: submission.test.totalMarks,
         passingMarks: submission.test.passingMarks,
-        duration: test.duration
+        duration: submission.test.timeLimit
       },
       submissionInfo: {
         submissionId: submission._id,
@@ -1313,30 +1308,15 @@ export const getUserTestResults = async (req, res) => {
         totalScore: Math.round(totalScore),
         mcqScore: Math.round(mcqScore),
         codingScore: Math.round(codingScore),
-        percentage: Math.round((totalScore / submission.test.totalMarks) * 100),
+        percentage,
         result: totalScore >= submission.test.passingMarks ? 'PASS' : 'FAIL'
       },
       mcqSection: {
-        totalQuestions: test.mcqs.length,
+        totalQuestions: submission.test.mcqs.length,
         attemptedQuestions: mcqDetails.length,
         correctAnswers: mcqDetails.filter(m => m.isCorrect).length,
         wrongAnswers: mcqDetails.filter(m => !m.isCorrect).length,
         detailedAnswers: mcqDetails
-      },
-      codingSection: {
-        totalChallenges: test.codingChallenges.length,
-        attemptedChallenges: codingDetails.length,
-        averageScore: codingDetails.length ? 
-          Math.round(codingDetails.reduce((sum, c) => sum + c.score, 0) / codingDetails.length) : 0,
-        detailedSubmissions: codingDetails
-      },
-      analytics: {
-        timeSpentOnMCQs: mcqDetails.reduce((total, mcq) => total + (mcq.timeTaken || 0), 0),
-        timeSpentOnCoding: codingDetails.reduce((total, challenge) => total + (challenge.timeTaken || 0), 0),
-        averageTimePerQuestion: mcqDetails.length ? 
-          Math.round(mcqDetails.reduce((sum, m) => sum + (m.timeTaken || 0), 0) / mcqDetails.length) : 0,
-        averageTimePerChallenge: codingDetails.length ?
-          Math.round(codingDetails.reduce((sum, c) => sum + (c.timeTaken || 0), 0) / codingDetails.length) : 0
       }
     };
 
@@ -1344,9 +1324,6 @@ export const getUserTestResults = async (req, res) => {
 
   } catch (error) {
     console.error('Error in getUserTestResults:', error);
-    res.status(500).json({ 
-      error: "Failed to fetch user test results",
-      details: error.message 
-    });
+    res.status(500).json({ error: error.message });
   }
 }; 
