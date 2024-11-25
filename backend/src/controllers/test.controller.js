@@ -41,8 +41,25 @@ export const createTest = async (req, res) => {
       }
     }
 
-    // Validate coding challenges
+    // Validate coding challenges and convert language IDs to names
     for (const challenge of codingChallenges) {
+      // Validate allowedLanguages exists and is an array
+      if (!Array.isArray(challenge.allowedLanguages) || challenge.allowedLanguages.length === 0) {
+        return res.status(400).json({
+          error: "At least one programming language must be allowed",
+          receivedLanguages: challenge.allowedLanguages
+        });
+      }
+
+      // Convert language IDs to names
+      challenge.allowedLanguages = challenge.allowedLanguages.map(langId => {
+        const language = Object.entries(LANGUAGE_IDS).find(([_, id]) => id === langId);
+        if (!language) {
+          throw new Error(`Invalid language ID: ${langId}`);
+        }
+        return language[0].toLowerCase(); // Return the language name in lowercase
+      });
+
       if (!challenge.title || !challenge.description || !challenge.problemStatement || 
           !challenge.constraints || !challenge.allowedLanguages || 
           !challenge.languageImplementations || !challenge.marks || 
@@ -488,7 +505,7 @@ export const addMCQs = async (req, res) => {
     test.mcqs.push(...mcqsToAdd);
     
     // Recalculate total marks
-    test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0) + 
+    test.totalMarks = (test.mcqs?.reduce((sum, mcq) => sum + mcq.marks, 0) || 0)  + 
                       (test.codingChallenges?.reduce((sum, challenge) => sum + challenge.marks, 0) || 0);
     test.passingMarks = Math.ceil(test.totalMarks * 0.4);
     
@@ -655,6 +672,19 @@ export const addCodingChallenges = async (req, res) => {
         return res.status(400).json({
           error: "Memory limit must be a positive number",
           receivedMemoryLimit: challenge.memoryLimit
+        });
+      }
+    }
+
+    // Convert language IDs to names for each challenge
+    for (const challenge of challengesToAdd) {
+      if (Array.isArray(challenge.allowedLanguages)) {
+        challenge.allowedLanguages = challenge.allowedLanguages.map(langId => {
+          const language = Object.entries(LANGUAGE_IDS).find(([_, id]) => id === langId);
+          if (!language) {
+            throw new Error(`Invalid language ID: ${langId}`);
+          }
+          return language[0].toLowerCase(); // Return the language name in lowercase
         });
       }
     }
