@@ -168,6 +168,12 @@ export const getTests = async (req, res) => {
       .select('-mcqs.correctOptions -codingChallenges.testCases') // Don't send answers
       .sort({ createdAt: -1 });
 
+    // Create a reverse mapping of language IDs to names
+    const LANGUAGE_NAMES = Object.entries(LANGUAGE_IDS).reduce((acc, [name, id]) => {
+      acc[id] = name;
+      return acc;
+    }, {});
+
     // Transform the response to include submission data
     const transformedTests = await Promise.all(tests.map(async test => {
       // Get user's submission for this test if they're logged in
@@ -215,7 +221,10 @@ export const getTests = async (req, res) => {
           timeLimit: challenge.timeLimit,
           memoryLimit: challenge.memoryLimit,
           difficulty: challenge.difficulty,
-          allowedLanguages: challenge.allowedLanguages
+          // Map language IDs back to names
+          allowedLanguages: challenge.allowedLanguages?.map(langId => 
+            LANGUAGE_NAMES[langId] || langId
+          )
         })) || [],
         questionCounts: {
           mcq: test.mcqs?.length || 0,
@@ -1648,10 +1657,10 @@ export const getPublicTests = async (req, res) => {
 
 export const getTestByUuid = async (req, res) => {
   try {
-    console.log('UUID received:', req.params.uuid); // Debug log
+    console.log('UUID received:', req.params.uuid);
 
     const test = await Test.findOne({ uuid: req.params.uuid })
-      .select('_id uuid title description duration type category difficulty totalMarks status accessControl vendor')
+      .select('_id uuid title description duration type category difficulty totalMarks status accessControl vendor codingChallenges')
       .populate('vendor', 'name email')
       .lean();
     
@@ -1662,6 +1671,25 @@ export const getTestByUuid = async (req, res) => {
         uuid: req.params.uuid 
       });
     }
+
+    // Create a reverse mapping of language IDs to names
+    const LANGUAGE_NAMES = Object.entries(LANGUAGE_IDS).reduce((acc, [name, id]) => {
+      acc[id] = name;
+      return acc;
+    }, {});
+
+    // Transform coding challenges to use language names
+    const transformedChallenges = test.codingChallenges?.map(challenge => ({
+      ...challenge,
+      allowedLanguages: challenge.allowedLanguages?.map(langId => 
+        LANGUAGE_NAMES[langId] || langId
+      ),
+      languageImplementations: Object.entries(challenge.languageImplementations || {}).reduce((acc, [langId, impl]) => {
+        const langName = LANGUAGE_NAMES[langId] || langId;
+        acc[langName] = impl;
+        return acc;
+      }, {})
+    }));
 
     res.json({
       message: "Test found successfully",
@@ -1680,7 +1708,8 @@ export const getTestByUuid = async (req, res) => {
         vendor: {
           name: test.vendor?.name || 'Anonymous',
           email: test.vendor?.email
-        }
+        },
+        codingChallenges: transformedChallenges
       }
     });
 
