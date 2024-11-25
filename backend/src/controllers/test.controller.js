@@ -238,10 +238,14 @@ export const getTests = async (req, res) => {
           timeLimit: challenge.timeLimit,
           memoryLimit: challenge.memoryLimit,
           difficulty: challenge.difficulty,
-          // Map language IDs back to names
           allowedLanguages: challenge.allowedLanguages?.map(langId => 
             LANGUAGE_NAMES[langId] || langId
-          )
+          ),
+          languageImplementations: Object.entries(challenge.languageImplementations || {}).reduce((acc, [langId, impl]) => {
+            const langName = LANGUAGE_NAMES[langId] || langId;
+            acc[langName] = impl;
+            return acc;
+          }, {})
         })) || [],
         questionCounts: {
           mcq: test.mcqs?.length || 0,
@@ -293,7 +297,23 @@ export const getTestById = async (req, res) => {
       return res.status(403).json({ error: "Not authorized to access this test" });
     }
 
-    res.json(test);
+    // Transform language IDs to names in coding challenges
+    const transformedTest = {
+      ...test,
+      codingChallenges: test.codingChallenges?.map(challenge => ({
+        ...challenge,
+        allowedLanguages: challenge.allowedLanguages?.map(langId => 
+          LANGUAGE_NAMES[langId] || langId
+        ),
+        languageImplementations: Object.entries(challenge.languageImplementations || {}).reduce((acc, [langId, impl]) => {
+          const langName = LANGUAGE_NAMES[langId] || langId;
+          acc[langName] = impl;
+          return acc;
+        }, {})
+      }))
+    };
+
+    res.json(transformedTest);
   } catch (error) {
     // Improve error handling
     if (error.name === 'CastError') {

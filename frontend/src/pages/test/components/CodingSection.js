@@ -108,31 +108,37 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
     if (challenges?.length > 0) {
       const challenge = challenges[currentChallenge];
       if (challenge?.allowedLanguages?.length > 0) {
-        // Convert numeric language ID to name if needed
-        const firstLanguage = challenge.allowedLanguages[0];
-        const defaultLanguage = (LANGUAGE_NAMES[firstLanguage] || firstLanguage).toLowerCase();
-        setLanguage(defaultLanguage);
-        
-        // Initialize answers if they don't exist
+        // Get existing answer first
         const existingAnswer = answers[challenge._id];
-        if (!existingAnswer) {
-          // Handle both string and numeric language IDs for visible code
-          const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || 
-                            challenge.languageImplementations?.[firstLanguage]?.visibleCode || 
-                            getDefaultCodeForLanguage(defaultLanguage);
-          setEditorValue(visibleCode);
-          
-          const newAnswers = {
-            ...answers,
-            [challenge._id]: {
-              code: visibleCode,
-              language: defaultLanguage
-            }
-          };
-          setAnswers(newAnswers);
-        } else {
+        
+        if (existingAnswer) {
+          // If we have an existing answer, use that
           setEditorValue(existingAnswer.code);
           setLanguage(existingAnswer.language);
+        } else {
+          // For new challenges, set up initial language and code
+          const firstLanguage = challenge.allowedLanguages[0];
+          // Handle both numeric and string language IDs
+          const defaultLanguage = typeof firstLanguage === 'number' 
+            ? LANGUAGE_NAMES[firstLanguage]?.toLowerCase()
+            : firstLanguage.toLowerCase();
+
+          if (defaultLanguage) {
+            const visibleCode = challenge.languageImplementations?.[defaultLanguage]?.visibleCode || 
+                               getDefaultCodeForLanguage(defaultLanguage);
+            
+            setEditorValue(visibleCode);
+            setLanguage(defaultLanguage);
+            
+            // Update answers state
+            setAnswers(prev => ({
+              ...prev,
+              [challenge._id]: {
+                code: visibleCode,
+                language: defaultLanguage
+              }
+            }));
+          }
         }
       }
     }
@@ -757,29 +763,37 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
 
   // Update handleLanguageChange
   const handleLanguageChange = (newLanguage) => {
-    console.log('Changing language to:', newLanguage);
-    
     if (!challenge?._id) return;
 
     // Convert language name to lowercase for consistency
     const normalizedLanguage = newLanguage.toLowerCase();
     
-    // Get the visible code for the new language
-    const newLanguageVisibleCode = challenge.languageImplementations?.[normalizedLanguage]?.visibleCode || 
-                                  getDefaultCodeForLanguage(normalizedLanguage);
+    // First check if there's an existing implementation for this language
+    const existingImplementation = challenge.languageImplementations?.[normalizedLanguage];
+    
+    // Get the appropriate code for the new language
+    let newCode;
+    if (existingImplementation?.visibleCode) {
+      newCode = existingImplementation.visibleCode;
+    } else {
+      // Fall back to default template if no implementation exists
+      newCode = getDefaultCodeForLanguage(normalizedLanguage);
+    }
 
-    // Update editor value and answers state with the new language's visible code
-    setEditorValue(newLanguageVisibleCode);
-    setAnswers(prev => ({
-      ...prev,
-      [challenge._id]: {
-        code: newLanguageVisibleCode,
-        language: normalizedLanguage
-      }
-    }));
+    // Update editor value
+    setEditorValue(newCode);
     
     // Update language state
     setLanguage(normalizedLanguage);
+    
+    // Update answers state while preserving other answers
+    setAnswers(prev => ({
+      ...prev,
+      [challenge._id]: {
+        code: newCode,
+        language: normalizedLanguage
+      }
+    }));
   };
 
   // Add this function near the top of the component, after state declarations
@@ -805,8 +819,8 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
         className="bg-[#3c3c3c] text-white text-sm px-2 py-1 rounded border border-[#4c4c4c]"
       >
         {challenge.allowedLanguages.map(lang => {
-          // Handle both string and numeric language IDs
-          const langName = (typeof lang === 'number') ? LANGUAGE_NAMES[lang] : lang;
+          // Handle both numeric and string language IDs
+          const langName = typeof lang === 'number' ? LANGUAGE_NAMES[lang] : lang;
           const langValue = langName.toLowerCase();
           return (
             <option key={langValue} value={langValue}>
