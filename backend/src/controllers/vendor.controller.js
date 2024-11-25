@@ -1217,38 +1217,126 @@ export const getUserTestResults = async (req, res) => {
 
     if (!test) {
       return res.status(404).json({ 
-        error: "Test not found or you do not have permission to view it" 
+        error: "Test not found or you don't have permission to view it" 
       });
     }
 
-    // Get user's submission
+    // Get user's submission with all related data
     const submission = await Submission.findOne({
       test: testId,
       user: userId
     })
     .populate('user', 'name email')
-    .populate('test', 'title passingMarks');
+    .populate('test', 'title passingMarks totalMarks mcqs codingChallenges')
+    .populate('mcqSubmission')
+    .populate('codingSubmission');
 
     if (!submission) {
       return res.status(404).json({ error: "No submission found for this user" });
     }
 
-    // Format response
+    // Calculate MCQ details
+    const mcqDetails = submission.mcqSubmission?.answers?.map(answer => {
+      const question = test.mcqs.find(q => q._id.toString() === answer.questionId.toString());
+      return {
+        questionId: answer.questionId,
+        question: question?.question,
+        selectedOptions: answer.selectedOptions,
+        correctOptions: question?.correctOptions,
+        isCorrect: answer.isCorrect,
+        marks: answer.isCorrect ? question?.marks : 0,
+        maxMarks: question?.marks,
+        timeTaken: answer.timeTaken,
+        submittedAt: answer.submittedAt
+      };
+    }) || [];
+
+    // Calculate coding challenge details
+    const codingDetails = submission.codingSubmission?.answers?.map(answer => {
+      const challenge = test.codingChallenges.find(
+        c => c._id.toString() === answer.challengeId.toString()
+      );
+      return {
+        challengeId: answer.challengeId,
+        title: challenge?.title,
+        language: answer.language,
+        code: answer.code,
+        score: answer.score,
+        maxMarks: challenge?.marks,
+        marksObtained: (answer.score * challenge?.marks) / 100,
+        testCaseResults: answer.testCaseResults?.map(result => ({
+          input: result.input,
+          expectedOutput: result.expectedOutput,
+          actualOutput: result.actualOutput,
+          passed: result.passed,
+          error: result.error,
+          executionTime: result.executionTime,
+          memoryUsed: result.memoryUsed
+        })),
+        timeTaken: answer.timeTaken,
+        submittedAt: answer.submittedAt,
+        compilationError: answer.compilationError,
+        runtimeError: answer.runtimeError
+      };
+    }) || [];
+
+    // Calculate scores
+    const mcqScore = mcqDetails.reduce((total, mcq) => total + (mcq.marks || 0), 0);
+    const codingScore = codingDetails.reduce((total, challenge) => 
+      total + (challenge.marksObtained || 0), 0);
+    const totalScore = mcqScore + codingScore;
+
+    // Format comprehensive response
     const result = {
-      candidateId: submission.user._id,
-      candidateName: submission.user.name,
-      email: submission.user.email,
-      testTitle: submission.test.title,
-      score: submission.score || 0,
-      mcqScore: submission.mcqSubmission?.totalScore || 0,
-      codingScore: submission.codingSubmission?.totalScore || 0,
-      status: submission.status,
-      submittedAt: submission.submittedAt,
-      completionTime: submission.duration,
-      result: (submission.score >= submission.test.passingMarks) ? 'PASS' : 'FAIL',
-      details: {
-        mcqAnswers: submission.mcqSubmission?.answers?.length || 0,
-        codingChallenges: submission.codingSubmission?.answers?.length || 0
+      candidateInfo: {
+        candidateId: submission.user._id,
+        candidateName: submission.user.name,
+        email: submission.user.email
+      },
+      testInfo: {
+        testId: test._id,
+        testTitle: submission.test.title,
+        totalMarks: submission.test.totalMarks,
+        passingMarks: submission.test.passingMarks,
+        duration: test.duration
+      },
+      submissionInfo: {
+        submissionId: submission._id,
+        startedAt: submission.createdAt,
+        submittedAt: submission.submittedAt,
+        status: submission.status,
+        completionTime: submission.duration,
+        warnings: submission.warnings || 0,
+        proctoringSessions: submission.proctoringSessions || []
+      },
+      scores: {
+        totalScore: Math.round(totalScore),
+        mcqScore: Math.round(mcqScore),
+        codingScore: Math.round(codingScore),
+        percentage: Math.round((totalScore / submission.test.totalMarks) * 100),
+        result: totalScore >= submission.test.passingMarks ? 'PASS' : 'FAIL'
+      },
+      mcqSection: {
+        totalQuestions: test.mcqs.length,
+        attemptedQuestions: mcqDetails.length,
+        correctAnswers: mcqDetails.filter(m => m.isCorrect).length,
+        wrongAnswers: mcqDetails.filter(m => !m.isCorrect).length,
+        detailedAnswers: mcqDetails
+      },
+      codingSection: {
+        totalChallenges: test.codingChallenges.length,
+        attemptedChallenges: codingDetails.length,
+        averageScore: codingDetails.length ? 
+          Math.round(codingDetails.reduce((sum, c) => sum + c.score, 0) / codingDetails.length) : 0,
+        detailedSubmissions: codingDetails
+      },
+      analytics: {
+        timeSpentOnMCQs: mcqDetails.reduce((total, mcq) => total + (mcq.timeTaken || 0), 0),
+        timeSpentOnCoding: codingDetails.reduce((total, challenge) => total + (challenge.timeTaken || 0), 0),
+        averageTimePerQuestion: mcqDetails.length ? 
+          Math.round(mcqDetails.reduce((sum, m) => sum + (m.timeTaken || 0), 0) / mcqDetails.length) : 0,
+        averageTimePerChallenge: codingDetails.length ?
+          Math.round(codingDetails.reduce((sum, c) => sum + (c.timeTaken || 0), 0) / codingDetails.length) : 0
       }
     };
 
@@ -1256,6 +1344,9 @@ export const getUserTestResults = async (req, res) => {
 
   } catch (error) {
     console.error('Error in getUserTestResults:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: "Failed to fetch user test results",
+      details: error.message 
+    });
   }
 }; 
