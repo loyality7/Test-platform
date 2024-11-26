@@ -16,6 +16,7 @@ export default function SharedTest() {
       try {
         setLoading(true);
         const token = localStorage.getItem('token');
+        const userEmail = localStorage.getItem('userEmail');
         
         // Check authentication first
         if (!token) {
@@ -33,8 +34,6 @@ export default function SharedTest() {
         // Check if test is private and user doesn't have access
         if (verifyResponse.test.accessControl?.type === 'private') {
           const userRole = localStorage.getItem('userRole');
-          const userEmail = localStorage.getItem('userEmail');
-          
           const isAllowedUser = verifyResponse.test.accessControl?.allowedUsers?.some(
             user => user.email === userEmail
           );
@@ -263,6 +262,24 @@ export default function SharedTest() {
               </div>
             )}
           </div>
+
+          {test.accessControl?.type === 'private' && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2">Access Status</h3>
+              {test.accessControl.allowedUsers?.length > 0 ? (
+                <div className="text-green-600">
+                  ✓ You are authorized to take this test
+                  <p className="text-sm text-gray-600 mt-1">
+                    Registered email: {test.accessControl.allowedUsers[0].email}
+                  </p>
+                </div>
+              ) : (
+                <div className="text-yellow-600">
+                  ⚠ This is a private test. Please contact the test administrator for access.
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

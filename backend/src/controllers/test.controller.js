@@ -2436,6 +2436,66 @@ export const updateTestType = async (req, res) => {
   }
 };
 
+export const getTestForTaking = async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const test = await Test.findOne({ uuid })
+      .populate('vendor', 'name email')
+      .lean();
 
+    if (!test) {
+      return res.status(404).json({ 
+        message: 'Test not found' 
+      });
+    }
 
-// export const updateTest = async (req, res) => {
+    // Check if user is authorized to take the test
+    const userEmail = req.user.email;
+    const isAdmin = req.user.role === 'admin';
+    const isVendor = test.vendor._id.toString() === req.user._id.toString();
+    const isAllowedUser = test.accessControl?.allowedUsers?.some(
+      user => user.email === userEmail
+    );
+
+    if (!isAdmin && !isVendor && !isAllowedUser) {
+      return res.status(403).json({ 
+        message: 'You are not authorized to take this test' 
+      });
+    }
+
+    // Transform the response
+    const response = {
+      message: 'Test loaded successfully',
+      data: {
+        id: test._id,
+        uuid: test.uuid,
+        title: test.title,
+        description: test.description,
+        duration: test.duration,
+        totalMarks: test.totalMarks,
+        type: test.type,
+        accessControl: {
+          type: test.accessControl?.type || 'private',
+          userLimit: test.accessControl?.userLimit || 0,
+          // Only include the current user's info if they're in allowedUsers
+          allowedUsers: isAllowedUser ? [{
+            email: userEmail,
+            name: test.accessControl.allowedUsers.find(u => u.email === userEmail)?.name,
+            addedAt: test.accessControl.allowedUsers.find(u => u.email === userEmail)?.addedAt
+          }] : [],
+          currentUserCount: test.accessControl?.allowedUsers?.length || 0
+        },
+        mcqs: test.mcqs || [],
+        codingChallenges: test.codingChallenges || []
+      }
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error in getTestForTaking:', error);
+    res.status(500).json({ 
+      message: 'Error loading test',
+      error: error.message 
+    });
+  }
+};
