@@ -7,6 +7,7 @@
     "@babel/plugin-transform-private-methods": "^7.25.9",
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
+    "@headlessui/react": "^2.2.0",
     "@mediapipe/camera_utils": "^0.3.1675466862",
     "@mediapipe/face_detection": "^0.4.1646425229",
     "@mediapipe/objectron": "^0.4.1675468480",

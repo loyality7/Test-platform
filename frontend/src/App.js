@@ -129,16 +129,12 @@ const AppContent = () => {
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router
-        future={{
-          v7_relativeSplatPath: true
-        }}
-      >
+      <Router>
         <AuthProvider>
           <AppContent />
+          <Toaster position="top-right" />
         </AuthProvider>
       </Router>
-      <Toaster position="top-right" />
     </QueryClientProvider>
   );
 };

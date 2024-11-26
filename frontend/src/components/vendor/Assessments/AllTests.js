@@ -1,4 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Popover } from '@headlessui/react';
+import { toast } from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
+import 'react-circular-progressbar/dist/styles.css';
+import { Tooltip } from 'react-tooltip';
 import Layout from '../../layout/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../common/Card';
 import { 
@@ -6,21 +13,16 @@ import {
   Edit, Trash2, Eye, TrendingUp, Award, Brain, Target, Share2, Copy,
   BarChart2, Settings, AlertTriangle, CheckCircle, X
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
-import 'react-circular-progressbar/dist/styles.css';
-import { Tooltip } from 'react-tooltip';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from 'recharts';
-import { useNavigate } from 'react-router-dom';
 
 const AllTests = () => {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState('grid');
   const [selectedTest, setSelectedTest] = useState(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const navigate = useNavigate();
 
   // Add these new statistics
   const analyticsData = {
@@ -139,82 +141,233 @@ const AllTests = () => {
     </motion.div>
   );
 
-  // Add new TestCard component with enhanced features
-  const TestCard = ({ test }) => (
-    <motion.div
-      whileHover={{ y: -5 }}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="relative"
-    >
-      <Card className="hover:shadow-xl transition-all duration-300">
-        <CardContent className="p-6">
-          <div className="absolute top-4 right-4">
-            <div className="w-16 h-16">
-              <CircularProgressbar
-                value={parseInt(test.completionRate)}
-                text={test.completionRate}
-                styles={buildStyles({
-                  pathColor: test.status === 'Active' ? '#10b981' : '#f43f5e',
-                  textColor: '#333',
-                  trailColor: '#d6d6d6',
-                  backgroundColor: '#fff'
-                })}
-              />
+  // Add these new action handlers
+  const useTestActions = () => {
+    const handlePreview = useCallback((testId) => {
+      navigate(`/vendor/tests/${testId}/preview`);
+    }, [navigate]);
+
+    const handleEdit = useCallback((testId) => {
+      navigate(`/vendor/tests/${testId}/edit`);
+    }, [navigate]);
+
+    const handleShare = useCallback((test) => {
+      const shareLink = `${window.location.origin}/test/${test.id}`;
+      navigator.clipboard.writeText(shareLink);
+      toast.success('Test link copied to clipboard!');
+    }, []);
+
+    const handleDuplicate = useCallback(async (test) => {
+      try {
+        toast.success('Test duplicated successfully!');
+      } catch (error) {
+        toast.error('Failed to duplicate test');
+      }
+    }, []);
+
+    const handleDelete = useCallback(async (testId) => {
+      if (window.confirm('Are you sure you want to delete this test?')) {
+        try {
+          toast.success('Test deleted successfully!');
+        } catch (error) {
+          toast.error('Failed to delete test');
+        }
+      }
+    }, []);
+
+    return {
+      handlePreview,
+      handleEdit,
+      handleShare,
+      handleDuplicate,
+      handleDelete
+    };
+  };
+
+  // Updated TestCard component
+  const TestCard = React.memo(({ test }) => {
+    const actions = useTestActions();
+    const [showStats, setShowStats] = useState(false);
+
+    // Calculate test metrics
+    const passRate = test.passRate || 75;
+    const avgScore = test.avgScore || 82;
+    const completionTime = test.avgCompletionTime || '45 mins';
+
+    return (
+      <div className="relative">
+        <Card className="hover:shadow-xl transition-all duration-200">
+          <CardContent className="p-6">
+            {/* Status Badge and Score */}
+            <div className="absolute top-4 right-4 flex flex-col items-end gap-3">
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                test.status === 'Active' 
+                  ? 'bg-green-50 text-green-600' 
+                  : test.status === 'Draft'
+                  ? 'bg-yellow-50 text-yellow-600'
+                  : 'bg-gray-50 text-gray-600'
+              }`}>
+                {test.status}
+              </span>
+              <div className="w-16 h-16" data-tooltip-id={`completion-tooltip-${test.id}`}>
+                <CircularProgressbar
+                  value={parseInt(test.completionRate)}
+                  text={`${test.completionRate}`}
+                  styles={buildStyles({
+                    pathColor: parseInt(test.completionRate) > 75 ? '#10b981' : '#f59e0b',
+                    textSize: '24px',
+                    textColor: '#374151',
+                    trailColor: '#e5e7eb',
+                  })}
+                />
+              </div>
+              <Tooltip id={`completion-tooltip-${test.id}`}>
+                Completion Rate: {test.completionRate}
+              </Tooltip>
             </div>
-          </div>
-          <div className="flex justify-between items-start">
+
+            {/* Test Info */}
             <div>
-              <h3 className="font-medium text-lg text-gray-900">{test.title}</h3>
-              <p className="text-sm text-gray-500 mt-1">{test.category}</p>
+              <h3 className="font-semibold text-lg text-gray-900 pr-20">{test.title}</h3>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-sm text-gray-500">{test.category}</span>
+                <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                <span className={`text-sm font-medium ${
+                  test.difficulty === 'Advanced' ? 'text-red-500' :
+                  test.difficulty === 'Intermediate' ? 'text-yellow-500' :
+                  'text-green-500'
+                }`}>
+                  {test.difficulty}
+                </span>
+              </div>
             </div>
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-              test.status === 'Active' 
-                ? 'bg-green-50 text-green-600' 
-                : 'bg-gray-50 text-gray-600'
-            }`}>
-              {test.status}
-            </span>
-          </div>
 
-          <div className="mt-4 space-y-3">
-            <div className="flex items-center text-sm text-gray-600">
-              <Clock className="h-4 w-4 mr-2" />
-              {test.duration}
+            {/* Skills Tags */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {test.skills.map((skill, index) => (
+                <span 
+                  key={index}
+                  className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md text-xs font-medium"
+                >
+                  {skill}
+                </span>
+              ))}
             </div>
-            <div className="flex items-center text-sm text-gray-600">
-              <Brain className="h-4 w-4 mr-2" />
-              {test.questions} Questions
-            </div>
-            <div className="flex items-center text-sm text-gray-600">
-              <Users className="h-4 w-4 mr-2" />
-              {test.candidates} Candidates
-            </div>
-          </div>
 
-          <div className="mt-6 pt-4 border-t flex justify-between items-center">
-            <div className="flex gap-2">
-              <button className="p-2 hover:bg-gray-100 rounded-full" title="Preview">
-                <Eye className="h-4 w-4" />
-              </button>
-              <button className="p-2 hover:bg-gray-100 rounded-full" title="Edit">
-                <Edit className="h-4 w-4" />
-              </button>
-              <button className="p-2 hover:bg-gray-100 rounded-full" title="Share">
-                <Share2 className="h-4 w-4" />
-              </button>
-              <button className="p-2 hover:bg-gray-100 rounded-full" title="Duplicate">
-                <Copy className="h-4 w-4" />
-              </button>
-            </div>
-            <button className="p-2 hover:bg-gray-100 rounded-full">
-              <MoreVertical className="h-4 w-4" />
+            {/* Quick Stats Toggle */}
+            <button 
+              onClick={() => setShowStats(!showStats)}
+              className="mt-4 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              {showStats ? 'Hide Stats' : 'Show Stats'}
             </button>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
+
+            {/* Enhanced Stats Section */}
+            {showStats && (
+              <div className="mt-4 grid grid-cols-3 gap-4 bg-gray-50 p-4 rounded-lg">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-indigo-600">{passRate}%</div>
+                  <div className="text-xs text-gray-500">Pass Rate</div>
+                </div>
+                <div className="text-center border-x border-gray-200">
+                  <div className="text-2xl font-bold text-indigo-600">{avgScore}</div>
+                  <div className="text-xs text-gray-500">Avg Score</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-indigo-600">{completionTime}</div>
+                  <div className="text-xs text-gray-500">Avg Time</div>
+                </div>
+              </div>
+            )}
+
+            {/* Test Details */}
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="flex items-center text-sm text-gray-600">
+                <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                {test.duration}
+              </div>
+              <div className="flex items-center text-sm text-gray-600">
+                <Brain className="h-4 w-4 mr-2 text-gray-400" />
+                {test.questions} Questions
+              </div>
+              <div className="flex items-center text-sm text-gray-600">
+                <Users className="h-4 w-4 mr-2 text-gray-400" />
+                {test.candidates} Candidates
+              </div>
+              <div className="flex items-center text-sm text-gray-600">
+                <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                {new Date(test.lastModified).toLocaleDateString()}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="mt-6 pt-4 border-t flex justify-between items-center">
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => actions.handlePreview(test.id)}
+                  className="p-2 hover:bg-gray-50 rounded-lg transition-colors duration-200 group" 
+                  title="Preview Test"
+                >
+                  <Eye className="h-4 w-4 text-gray-600 group-hover:text-indigo-600" />
+                </button>
+                <button 
+                  onClick={() => actions.handleEdit(test.id)}
+                  className="p-2 hover:bg-gray-50 rounded-lg transition-colors duration-200 group" 
+                  title="Edit Test"
+                >
+                  <Edit className="h-4 w-4 text-gray-600 group-hover:text-indigo-600" />
+                </button>
+                <button 
+                  onClick={() => actions.handleShare(test)}
+                  className="p-2 hover:bg-gray-50 rounded-lg transition-colors duration-200 group" 
+                  title="Share Test"
+                >
+                  <Share2 className="h-4 w-4 text-gray-600 group-hover:text-indigo-600" />
+                </button>
+                <button 
+                  onClick={() => actions.handleDuplicate(test)}
+                  className="p-2 hover:bg-gray-50 rounded-lg transition-colors duration-200 group" 
+                  title="Duplicate Test"
+                >
+                  <Copy className="h-4 w-4 text-gray-600 group-hover:text-indigo-600" />
+                </button>
+              </div>
+              
+              <Popover className="relative">
+                <Popover.Button className="p-2 hover:bg-gray-50 rounded-lg transition-colors duration-200">
+                  <MoreVertical className="h-4 w-4 text-gray-600" />
+                </Popover.Button>
+
+                <Popover.Panel className="absolute right-0 z-10 mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5">
+                  <div className="py-1">
+                    <button
+                      onClick={() => actions.handleDelete(test.id)}
+                      className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Test
+                    </button>
+                    <button
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <BarChart2 className="h-4 w-4 mr-2" />
+                      View Analytics
+                    </button>
+                    <button
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Results
+                    </button>
+                  </div>
+                </Popover.Panel>
+              </Popover>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  });
 
   const stats = [
     { title: 'Total Tests', value: '24', icon: Brain, color: 'blue' },

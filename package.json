@@ -10,5 +10,14 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "framer-motion": "^6.0.0",
+    "react-circular-progressbar": "^2.1.0",
+    "react-tooltip": "^5.0.0",
+    "recharts": "^2.0.0",
+    "@headlessui/react": "^1.7.0",
+    "lucide-react": "^0.284.0"
   }
 }
