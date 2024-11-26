@@ -2209,7 +2209,7 @@ export const registerForTest = async (req, res) => {
     const userEmail = req.user.email;
     const userRole = req.user.role;
 
-    // Find test and check if it exists
+    // Find test by UUID instead of ID
     const test = await Test.findOne({ uuid })
       .populate('vendor', 'name email')
       .lean();
@@ -2235,7 +2235,7 @@ export const registerForTest = async (req, res) => {
 
     // Check if already registered
     const existingRegistration = await TestRegistration.findOne({
-      test: test._id,
+      test: test._id, // Use the MongoDB _id here
       user: req.user._id
     });
 
@@ -2247,7 +2247,7 @@ export const registerForTest = async (req, res) => {
 
     // Create registration
     const registration = await TestRegistration.create({
-      test: test._id,
+      test: test._id, // Use the MongoDB _id here
       user: req.user._id,
       registeredAt: new Date(),
       status: 'registered',

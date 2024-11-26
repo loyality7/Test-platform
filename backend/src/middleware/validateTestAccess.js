@@ -1,17 +1,18 @@
 import Test from '../models/test.model.js';
+import mongoose from 'mongoose';
 
 export const validateTestAccess = async (req, res, next) => {
   try {
     // Extract required parameters from request
-    let testId = req.params.testId || req.body.testId || req.params.uuid;
+    let testId = req.params.uuid || req.params.testId || req.body.testId;
     const userId = req.user._id;
     const userEmail = req.user.email;
 
-    // Find test by either MongoDB ID or UUID
+    // Find test by UUID first, then fallback to ObjectId
     const test = await Test.findOne({
       $or: [
-        { _id: testId },
-        { uuid: testId }
+        { uuid: testId },
+        { _id: mongoose.Types.ObjectId.isValid(testId) ? testId : null }
       ]
     });
 
