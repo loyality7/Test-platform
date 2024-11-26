@@ -1855,7 +1855,7 @@ router.post("/verify/:uuid", verifyTestByUuid);
  * @swagger
  * /api/tests/register/{uuid}:
  *   post:
- *     summary: Register for a test
+ *     summary: Register for a test using UUID
  *     tags: [Tests]
  *     security:
  *       - bearerAuth: []
@@ -1865,10 +1865,11 @@ router.post("/verify/:uuid", verifyTestByUuid);
  *         required: true
  *         schema:
  *           type: string
- *         description: UUID of the test
+ *           format: uuid
+ *         description: UUID of the test to register for
  *     responses:
- *       200:
- *         description: Successfully registered for test or already registered
+ *       201:
+ *         description: Successfully registered for test
  *         content:
  *           application/json:
  *             schema:
@@ -1876,106 +1877,96 @@ router.post("/verify/:uuid", verifyTestByUuid);
  *               properties:
  *                 message:
  *                   type: string
+ *                   example: Successfully registered for test
  *                 registration:
  *                   type: object
  *                   properties:
- *                     _id:
+ *                     id:
  *                       type: string
- *                     test:
- *                       type: string
- *                     user:
- *                       type: string
- *                     status:
- *                       type: string
- *                     testType:
- *                       type: string
- *                     registrationType:
- *                       type: string
- *                     isVendorAttempt:
- *                       type: boolean
+ *                       description: Registration ID
  *                     registeredAt:
  *                       type: string
  *                       format: date-time
+ *                       description: Registration timestamp
+ *                     status:
+ *                       type: string
+ *                       enum: [registered, completed, expired]
+ *                       description: Registration status
  *       400:
- *         description: Invalid request or registration error
+ *         description: Bad request or already registered
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: You are already registered for this test
  *       401:
  *         description: Unauthorized - User not logged in
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Authentication required
  *       403:
- *         description: Invalid access token or test not available
+ *         description: Forbidden - User not authorized to take test
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Not authorized to access this test
+ *                 requiresRegistration:
+ *                   type: boolean
+ *                   example: false
+ *                 details:
+ *                   type: object
+ *                   properties:
+ *                     isAdmin:
+ *                       type: boolean
+ *                     isVendor:
+ *                       type: boolean
+ *                     isPublicTest:
+ *                       type: boolean
+ *                     isPracticeTest:
+ *                       type: boolean
+ *                     isAllowedUser:
+ *                       type: boolean
+ *                     userEmail:
+ *                       type: string
  *       404:
  *         description: Test not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Test not found
+ *                 requiresRegistration:
+ *                   type: boolean
+ *                   example: false
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Error registering for test
+ *                 error:
+ *                   type: string
  */
-router.post("/register/:uuid", auth, async (req, res) => {
-  try {
-    const test = await Test.findOne({ uuid: req.params.uuid });
-    if (!test) {
-      return res.status(404).json({
-        message: "Test not found"
-      });
-    }
-
-    // Check authorization for assessment tests
-    if (test.type === 'assessment' && test.accessControl.type === 'private') {
-      const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
-      if (!isAllowed) {
-        return res.status(403).json({
-          message: "You are not authorized to take this test"
-        });
-      }
-    }
-
-    // Check existing registration
-    const existingRegistration = await TestRegistration.findOne({
-      test: test._id,
-      user: req.user._id
-    });
-
-    if (existingRegistration) {
-      return res.status(200).json({
-        message: "Already registered for this test",
-        registration: existingRegistration
-      });
-    }
-
-    // Create new registration with valid enum values
-    const registration = await TestRegistration.create({
-      test: test._id,
-      user: req.user._id,
-      status: 'registered', // Using valid enum value
-      testType: test.type, // This should be either 'practice' or 'assessment'
-      registrationType: test.accessControl.type, // This should be either 'public' or 'private'
-    });
-
-    // Create initial session
-    const session = await TestSession.create({
-      test: test._id,
-      user: req.user._id,
-      duration: test.duration,
-      status: 'active'
-    });
-
-    return res.status(201).json({
-      message: "Successfully registered for test",
-      registration: {
-        _id: registration._id,
-        test: registration.test,
-        user: registration.user,
-        status: registration.status,
-        testType: registration.testType,
-        registrationType: registration.registrationType,
-        registeredAt: registration.registeredAt,
-        sessionId: session._id
-      }
-    });
-
-  } catch (error) {
-    console.error('Registration error:', error);
-    return res.status(500).json({
-      message: "Error registering for test",
-      error: error.message
-    });
-  }
-});
+router.post("/register/:uuid", auth, validateTestAccess, registerForTest);
 
 /**
  * @swagger

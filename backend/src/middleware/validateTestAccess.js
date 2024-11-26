@@ -3,8 +3,9 @@ import Test from '../models/test.model.js';
 export const validateTestAccess = async (req, res, next) => {
   try {
     // Extract required parameters from request
-    let testId = req.params.testId || req.body.testId;
+    let testId = req.params.testId || req.body.testId || req.params.uuid;
     const userId = req.user._id;
+    const userEmail = req.user.email;
 
     // Find test by either MongoDB ID or UUID
     const test = await Test.findOne({
@@ -34,36 +35,45 @@ export const validateTestAccess = async (req, res, next) => {
     }
 
     // Check access control
-    const isPublicTest = test.accessControl.type === 'public';
+    const isPublicTest = test.accessControl?.type === 'public';
     const isPracticeTest = test.type === 'practice';
-    const isAllowedUser = test.accessControl.allowedUsers?.includes(req.user._id);
+    const isAllowedUser = test.accessControl?.allowedUsers?.some(
+      user => user.email === userEmail
+    );
 
     // For adding users (vendor operations), check user limit
     if (isVendor && req.method === 'POST' && 
         (req.path.includes('/users/add') || req.path.includes('/users/upload'))) {
       
       // Check if there's a user limit and if it would be exceeded
-      if (test.accessControl.userLimit > 0) {
-        const requestedUsers = req.body.users?.length || 1; // Default to 1 for single user additions
-        const potentialTotal = test.accessControl.currentUserCount + requestedUsers;
+      if (test.accessControl?.userLimit > 0) {
+        const requestedUsers = req.body.users?.length || 1;
+        const potentialTotal = (test.accessControl.currentUserCount || 0) + requestedUsers;
         
         if (potentialTotal > test.accessControl.userLimit) {
           return res.status(403).json({ 
             error: "Adding these users would exceed the test's user limit",
-            currentCount: test.accessControl.currentUserCount,
+            currentCount: test.accessControl.currentUserCount || 0,
             limit: test.accessControl.userLimit,
-            remainingSlots: test.accessControl.userLimit - test.accessControl.currentUserCount
+            remainingSlots: test.accessControl.userLimit - (test.accessControl.currentUserCount || 0)
           });
         }
       }
     }
 
-    // Only allow registration for public/practice tests
-    // For private/assessment tests, user must be explicitly allowed
+    // Allow access if user is admin, vendor, or allowed user
     if (!isAdmin && !isVendor && !isPublicTest && !isPracticeTest && !isAllowedUser) {
       return res.status(403).json({ 
         error: "Not authorized to access this test",
-        requiresRegistration: false 
+        requiresRegistration: false,
+        details: {
+          isAdmin,
+          isVendor,
+          isPublicTest,
+          isPracticeTest,
+          isAllowedUser,
+          userEmail
+        }
       });
     }
 
