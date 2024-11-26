@@ -17,6 +17,12 @@ const updateLocalAnalytics = (newAnalytics) => {
   }
 };
 
+// Add this helper function at the top of the file
+const getTestEndTime = () => {
+  const savedEndTime = localStorage.getItem('testEndTime');
+  return savedEndTime ? parseInt(savedEndTime) : null;
+};
+
 export default function TakeTest() {
   const [test, setTest] = useState(null);
   const [sessionId, setSessionId] = useState(new URLSearchParams(window.location.search).get('session'));
@@ -219,10 +225,57 @@ export default function TakeTest() {
     };
   }, [showInstructions, handleWarning, updateAnalytics]);
 
-  // Simplify handleStartTest
+  // Update timer state and ref
+  const [timeRemaining, setTimeRemaining] = useState(() => {
+    const endTime = getTestEndTime();
+    return endTime ? endTime - Date.now() : 0;
+  });
+  const timerRef = useRef(null);
+
+  // Update the timer effect to use localStorage
+  useEffect(() => {
+    if (test && !showInstructions) {
+      let endTime = getTestEndTime();
+      
+      if (!endTime) {
+        endTime = Date.now() + (test.duration * 60 * 1000);
+        localStorage.setItem('testEndTime', endTime.toString());
+      }
+      
+      const updateTimer = () => {
+        const now = Date.now();
+        const remaining = endTime - now;
+        
+        if (remaining <= 0) {
+          clearInterval(timerRef.current);
+          handleSubmit(); // Auto-submit when time is up
+          return;
+        }
+        
+        setTimeRemaining(remaining);
+      };
+
+      updateTimer();
+      timerRef.current = setInterval(updateTimer, 1000);
+
+      return () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+      };
+    }
+  }, [test, showInstructions, handleSubmit]);
+
+  // Update handleStartTest to initialize the timer
   const handleStartTest = useCallback(async () => {
     try {
       setShowInstructions(false);
+      
+      // Initialize test end time if not already set
+      if (!getTestEndTime() && test?.duration) {
+        const endTime = Date.now() + (test.duration * 60 * 1000);
+        localStorage.setItem('testEndTime', endTime.toString());
+      }
       
       // Get the document element
       const elem = document.documentElement;
@@ -247,7 +300,7 @@ export default function TakeTest() {
       // Still continue with the test even if fullscreen fails
       setShowInstructions(false);
     }
-  }, []);
+  }, [test]);
 
   // Simplify handleSubmit
   const handleSubmit = useCallback(async () => {
@@ -538,41 +591,6 @@ export default function TakeTest() {
     }
   };
 
-  // Add these new state variables at the beginning of the component
-  const [timeRemaining, setTimeRemaining] = useState(0);
-  const timerRef = useRef(null);
-
-  // Update the timer effect to remove half-time check
-  useEffect(() => {
-    if (test && !showInstructions) {
-      const durationMs = test.duration * 60 * 1000;
-      const endTime = new Date().getTime() + durationMs;
-      
-      const updateTimer = () => {
-        const now = new Date().getTime();
-        const remaining = endTime - now;
-        
-        if (remaining <= 0) {
-          clearInterval(timerRef.current);
-          handleSubmit(); // Auto-submit when time is up
-          return;
-        }
-        
-        setTimeRemaining(remaining);
-      };
-
-      // Initialize timer
-      updateTimer();
-      timerRef.current = setInterval(updateTimer, 1000);
-
-      return () => {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-        }
-      };
-    }
-  }, [test, showInstructions, handleSubmit]);
-
   // Add these functions to disable developer tools and right-click
   useEffect(() => {
     const disableDevTools = () => {
@@ -624,6 +642,9 @@ export default function TakeTest() {
   // Update handleConfirmedSubmit to navigate immediately
   const handleConfirmedSubmit = async () => {
     setShowSubmitConfirmation(false);
+    
+    // Clear test end time
+    localStorage.removeItem('testEndTime');
     
     // Navigate immediately
     navigate('/test/completed', { 
