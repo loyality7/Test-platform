@@ -225,7 +225,7 @@ export default function TakeTest() {
     };
   }, [showInstructions, handleWarning, updateAnalytics]);
 
-  // Move handleSubmit up, before the timer effect
+  // Move handleSubmit up, before it's used in any effects
   const handleSubmit = useCallback(async () => {
     try {
       await endSession();
@@ -271,7 +271,7 @@ export default function TakeTest() {
         
         if (remaining <= 0) {
           clearInterval(timerRef.current);
-          handleSubmit(); // Now handleSubmit is defined before being used
+          handleSubmit();
           return;
         }
         
