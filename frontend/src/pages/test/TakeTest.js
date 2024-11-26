@@ -225,14 +225,37 @@ export default function TakeTest() {
     };
   }, [showInstructions, handleWarning, updateAnalytics]);
 
-  // Update timer state and ref
+  // Move handleSubmit up, before the timer effect
+  const handleSubmit = useCallback(async () => {
+    try {
+      await endSession();
+      
+      const totalScore = (test?.mcqSubmission?.totalScore || 0) + 
+                        (test?.codingSubmission?.totalScore || 0);
+
+      navigate('/test/completed', { 
+        state: { 
+          testId: uuid,
+          submission: {
+            mcq: answers.mcq,
+            coding: answers.coding,
+            totalScore,
+            testType: test.type
+          }
+        }
+      });
+    } catch (error) {
+      setError(error.message || 'Error completing test');
+    }
+  }, [answers, navigate, test, uuid, endSession]);
+
+  // Now the timer effect can use handleSubmit
   const [timeRemaining, setTimeRemaining] = useState(() => {
     const endTime = getTestEndTime();
     return endTime ? endTime - Date.now() : 0;
   });
   const timerRef = useRef(null);
 
-  // Update the timer effect to use localStorage
   useEffect(() => {
     if (test && !showInstructions) {
       let endTime = getTestEndTime();
@@ -248,7 +271,7 @@ export default function TakeTest() {
         
         if (remaining <= 0) {
           clearInterval(timerRef.current);
-          handleSubmit(); // Auto-submit when time is up
+          handleSubmit(); // Now handleSubmit is defined before being used
           return;
         }
         
@@ -301,30 +324,6 @@ export default function TakeTest() {
       setShowInstructions(false);
     }
   }, [test]);
-
-  // Simplify handleSubmit
-  const handleSubmit = useCallback(async () => {
-    try {
-      await endSession();
-      
-      const totalScore = (test?.mcqSubmission?.totalScore || 0) + 
-                        (test?.codingSubmission?.totalScore || 0);
-
-      navigate('/test/completed', { 
-        state: { 
-          testId: uuid,
-          submission: {
-            mcq: answers.mcq,
-            coding: answers.coding,
-            totalScore,
-            testType: test.type
-          }
-        }
-      });
-    } catch (error) {
-      setError(error.message || 'Error completing test');
-    }
-  }, [answers, navigate, test, uuid, endSession]);
 
   // Update the cleanup effect to only end session when component unmounts
   useEffect(() => {
