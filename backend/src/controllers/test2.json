@@ -1,0 +1,1353 @@
+{
+    "title": "Hysteresis Qualifier Test - DSA & Programming Fundamentals",
+    "description": "A comprehensive test covering Data Structures, Algorithms, and basic programming concepts. This test includes both multiple choice questions and hands-on coding challenges.",
+    "duration": 180,
+    "proctoring": true,
+    "type": "assessment",
+    "category": "Computer Science",
+    "difficulty": "intermediate",
+    "instructions": "1. Complete all MCQs and coding challenges within the time limit\n2. Each coding solution must pass all test cases\n3. You can attempt questions in any order\n4. Ensure your code handles all edge cases",
+    "mcqs": [
+      {
+        "question": "What is the time complexity of the quicksort algorithm in its worst case?",
+        "options": [
+          "O(n log n)",
+          "O(n²)",
+          "O(n)",
+          "O(log n)"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Quicksort's worst case occurs when the pivot is always the smallest or largest element, leading to O(n²) complexity."
+      },
+      {
+        "question": "Which of the following operations are valid for a Stack data structure?",
+        "options": [
+          "Push",
+          "Pop",
+          "Peek",
+          "Insert at middle"
+        ],
+        "correctOptions": [0, 1, 2],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "Stack follows LIFO principle and supports push (add), pop (remove), and peek (view top) operations."
+      },
+      {
+        "question": "What is the space complexity of a recursive fibonacci implementation without memoization?",
+        "options": [
+          "O(1)",
+          "O(n)",
+          "O(2ⁿ)",
+          "O(log n)"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "hard",
+        "explanation": "The space complexity is O(n) due to the recursive call stack depth."
+      },
+      {
+        "question": "What is the primary advantage of using a Red-Black tree over a regular Binary Search Tree?",
+        "options": [
+          "Guaranteed O(1) insertion",
+          "Self-balancing property ensuring O(log n) operations",
+          "Uses less memory",
+          "Allows duplicate keys"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Red-Black trees are self-balancing BSTs that guarantee O(log n) time complexity for basic operations by maintaining balance during insertions and deletions."
+      },
+      {
+        "question": "Which data structures can be used to implement a Priority Queue?",
+        "options": [
+          "Binary Heap",
+          "Binary Search Tree",
+          "Fibonacci Heap",
+          "Linked List"
+        ],
+        "correctOptions": [0, 1, 2],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Priority Queues can be implemented using Binary Heaps (most common), BSTs, or Fibonacci Heaps. While Linked Lists can technically be used, they're inefficient."
+      },
+      {
+        "question": "What is the time complexity of finding the k-th smallest element in a Min Heap?",
+        "options": [
+          "O(1)",
+          "O(k)",
+          "O(log n)",
+          "O(n)"
+        ],
+        "correctOptions": [3],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "hard",
+        "explanation": "While a Min Heap can give us the minimum element in O(1), finding the k-th smallest requires removing k elements, resulting in O(n) complexity."
+      },
+      {
+        "question": "In a Graph, what algorithm is most suitable for finding the shortest path when edge weights can be negative?",
+        "options": [
+          "Dijkstra's Algorithm",
+          "Bellman-Ford Algorithm",
+          "Depth-First Search",
+          "A* Search"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Bellman-Ford Algorithm can handle negative edge weights and detect negative cycles, unlike Dijkstra's algorithm."
+      },
+      {
+        "question": "Which of these sorting algorithms are stable?",
+        "options": [
+          "Merge Sort",
+          "Quick Sort",
+          "Insertion Sort",
+          "Selection Sort"
+        ],
+        "correctOptions": [0, 2],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Merge Sort and Insertion Sort maintain the relative order of equal elements, making them stable sorting algorithms."
+      },
+      {
+        "question": "What is the space complexity of DFS when implemented using recursion?",
+        "options": [
+          "O(1)",
+          "O(V)",
+          "O(E)",
+          "O(V + E)"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "The space complexity is O(V) due to the recursive call stack that can go as deep as the number of vertices in the worst case."
+      },
+      {
+        "question": "Which of these operations are O(1) in a hash table with chaining?",
+        "options": [
+          "Average case insertion",
+          "Worst case insertion",
+          "Average case search",
+          "Worst case search"
+        ],
+        "correctOptions": [0, 2],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "hard",
+        "explanation": "In a hash table with chaining, average case operations are O(1), but worst case operations are O(n) when all elements hash to the same bucket."
+      },
+      {
+        "question": "Which of the following best describes an operating system?",
+        "options": [
+          "A program that performs calculations",
+          "An interface between hardware and user",
+          "A virus protection software",
+          "A web browser"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "An operating system acts as an interface between computer hardware and the user, managing hardware resources and providing services for computer programs."
+      },
+      {
+        "question": "What happens in the fetch cycle of the CPU?",
+        "options": [
+          "Data is processed",
+          "Results are stored in memory",
+          "Instruction is retrieved from memory",
+          "Output is displayed"
+        ],
+        "correctOptions": [2],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "During the fetch cycle, the CPU retrieves an instruction from memory at the address specified by the program counter."
+      },
+      {
+        "question": "Which of these are types of memory?",
+        "options": [
+          "RAM",
+          "ROM",
+          "Cache",
+          "Register"
+        ],
+        "correctOptions": [0, 1, 2, 3],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "All these are types of memory, arranged in order of decreasing access time and increasing capacity: Register, Cache, RAM, ROM."
+      },
+      {
+        "question": "What is the purpose of virtual memory?",
+        "options": [
+          "To increase CPU speed",
+          "To extend RAM using disk space",
+          "To store permanent data",
+          "To improve graphics performance"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Virtual memory uses disk space to extend RAM, allowing programs to use more memory than physically available."
+      },
+      {
+        "question": "Which network topology requires the most cabling?",
+        "options": [
+          "Star",
+          "Ring",
+          "Bus",
+          "Mesh"
+        ],
+        "correctOptions": [3],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Mesh topology requires direct connections between all nodes, making it the most cable-intensive topology."
+      },
+      {
+        "question": "What is the function of an IP address?",
+        "options": [
+          "To identify a network interface",
+          "To encrypt data",
+          "To compress files",
+          "To block viruses"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "An IP address uniquely identifies a device's network interface on a network using the Internet Protocol."
+      },
+      {
+        "question": "Which of these are valid binary operations?",
+        "options": [
+          "AND",
+          "OR",
+          "XOR",
+          "NOT"
+        ],
+        "correctOptions": [0, 1, 2, 3],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "These are the basic binary operations used in computer science."
+      },
+      {
+        "question": "What is the primary purpose of an assembler?",
+        "options": [
+          "To compile code",
+          "To track changes in source code",
+          "To execute programs",
+          "To design user interfaces"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "An assembler is used to compile code, converting assembly language into machine code that can be executed by a computer."
+      },
+      {
+        "question": "Which of these represents the smallest unit of data in a computer?",
+        "options": [
+          "Byte",
+          "Bit",
+          "Word",
+          "Kilobyte"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "A bit is the smallest unit of data in a computer, representing a single binary digit (0 or 1)."
+      },
+      {
+        "question": "What is the purpose of cache memory?",
+        "options": [
+          "To increase CPU speed",
+          "To extend RAM using disk space",
+          "To store permanent data",
+          "To improve graphics performance"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Cache memory is used to speed up data access by storing frequently accessed data in a faster memory location."
+      },
+      {
+        "question": "What is the primary purpose of HTTPS?",
+        "options": [
+          "To make websites load faster",
+          "To secure data transmission",
+          "To compress web content",
+          "To cache web pages"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "HTTPS (Hypertext Transfer Protocol Secure) encrypts data transmission between client and server, protecting sensitive information from interception."
+      },
+      {
+        "question": "Which of these are principles of Object-Oriented Programming?",
+        "options": [
+          "Encapsulation",
+          "Inheritance",
+          "Polymorphism",
+          "Abstraction"
+        ],
+        "correctOptions": [0, 1, 2, 3],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "These are the four main pillars of OOP, each serving a crucial role in object-oriented design and implementation."
+      },
+      {
+        "question": "What is the purpose of a Primary Key in a database?",
+        "options": [
+          "To encrypt data",
+          "To uniquely identify records",
+          "To compress data",
+          "To sort data"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "A Primary Key uniquely identifies each record in a database table, ensuring data integrity and providing a reference for relationships."
+      },
+      {
+        "question": "Which of these are valid REST API methods?",
+        "options": [
+          "GET",
+          "POST",
+          "PUT",
+          "DELETE"
+        ],
+        "correctOptions": [0, 1, 2, 3],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "These are the main HTTP methods used in RESTful APIs: GET (retrieve), POST (create), PUT (update), DELETE (remove)."
+      },
+      {
+        "question": "What is the purpose of a Version Control System?",
+        "options": [
+          "To compile code",
+          "To track changes in source code",
+          "To execute programs",
+          "To design user interfaces"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "A Version Control System is used to track changes in source code, allowing developers to collaborate and manage code changes efficiently."
+      },
+      {
+        "question": "Which of these are types of software testing?",
+        "options": [
+          "Unit Testing",
+          "Integration Testing",
+          "System Testing",
+          "Acceptance Testing"
+        ],
+        "correctOptions": [0, 1, 2, 3],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "These are the main types of software testing used in software development."
+      },
+      {
+        "question": "What is the main purpose of an API?",
+        "options": [
+          "To compile code",
+          "To track changes in source code",
+          "To execute programs",
+          "To design user interfaces"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "An API is used to track changes in source code, allowing developers to collaborate and manage code changes efficiently."
+      },
+      {
+        "question": "What is the purpose of Docker?",
+        "options": [
+          "To compile code",
+          "To track changes in source code",
+          "To execute programs",
+          "To design user interfaces"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Docker is used to track changes in source code, allowing developers to collaborate and manage code changes efficiently."
+      },
+      {
+        "question": "Which principle states that a class should have only one reason to change?",
+        "options": [
+          "Encapsulation",
+          "Inheritance",
+          "Polymorphism",
+          "Abstraction"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Encapsulation is the principle that a class should have only one reason to change, making it more maintainable and less prone to bugs."
+      },
+      {
+        "question": "What is the primary purpose of the HTML <head> tag?",
+        "options": [
+          "To define the document's body",
+          "To specify the document's metadata",
+          "To include external stylesheets",
+          "To add interactive elements"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "The HTML <head> tag is used to specify the document's metadata, such as the title, charset, and links to external stylesheets or scripts."
+      },
+      {
+        "question": "What is the primary benefit of implementing a cybersecurity framework?",
+        "options": [
+          "Compliance with regulations",
+          "Protection against cyber threats",
+          "Improved incident response",
+          "Enhanced customer trust"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "The primary benefit of implementing a cybersecurity framework is protection against cyber threats, allowing businesses to defend against and respond to cyber attacks."
+      },
+      {
+        "question": "What is the primary advantage of using a cloud-based infrastructure?",
+        "options": [
+          "Scalability",
+          "Cost-effectiveness",
+          "High availability",
+          "Security"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "The primary advantage of using a cloud-based infrastructure is its scalability, allowing businesses to easily adjust their resources to meet changing demands."
+      },
+      {
+        "question": "Which of these are common cybersecurity threats?",
+        "options": [
+          "Phishing",
+          "Ransomware",
+          "DDoS attacks",
+          "SQL injection"
+        ],
+        "correctOptions": [0, 1, 2, 3],
+        "answerType": "multiple",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "These are common cybersecurity threats that businesses need to be aware of and protect against."
+      },
+      {
+        "question": "What is the primary purpose of a cloud security gateway?",
+        "options": [
+          "Network security",
+          "Data encryption",
+          "Access control",
+          "Threat detection"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "The primary purpose of a cloud security gateway is network security, allowing businesses to secure their cloud-based infrastructure and protect against cyber threats."
+      },
+      {
+        "question": "What is the primary purpose of a cloud-based identity and access management (IAM) system?",
+        "options": [
+          "Access control",
+          "Identity management",
+          "Authentication",
+          "Authorization"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "The primary purpose of a cloud-based IAM system is identity management, allowing businesses to manage user identities and access to cloud-based resources."
+      },
+      {
+        "question": "If a train travels 360 kilometers in 4 hours, what is its average speed in kilometers per hour?",
+        "options": [
+          "80 km/h",
+          "90 km/h",
+          "85 km/h",
+          "95 km/h"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "Average speed = Total distance / Total time = 360/4 = 90 km/h"
+      },
+      {
+        "question": "What comes next in the sequence: 2, 6, 12, 20, ?",
+        "options": [
+          "24",
+          "28",
+          "30",
+          "32"
+        ],
+        "correctOptions": [2],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "The pattern adds 4, 6, 8, 10... (increasing by 2 each time). So next number is 20 + 10 = 30"
+      },
+      {
+        "question": "If 3 workers can complete a job in 12 days, how many days will it take 4 workers to complete the same job?",
+        "options": [
+          "16 days",
+          "9 days",
+          "8 days",
+          "10 days"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "(3 workers × 12 days) = (4 workers × x days); 36 = 4x; x = 9 days"
+      },
+      {
+        "question": "What percentage of 80 is 20?",
+        "options": [
+          "20%",
+          "25%",
+          "15%",
+          "30%"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "(20/80) × 100 = 25%"
+      },
+      {
+        "question": "If A:B = 3:4 and B:C = 2:3, then what is A:B:C?",
+        "options": [
+          "3:4:6",
+          "6:8:12",
+          "3:4:8",
+          "6:8:9"
+        ],
+        "correctOptions": [1],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Converting to equal ratios and combining: A:B = 6:8, B:C = 8:12, therefore A:B:C = 6:8:12"
+      },
+      {
+        "question": "A clock shows 3:30. What is the angle between the hour and minute hands?",
+        "options": [
+          "75 degrees",
+          "80 degrees",
+          "85 degrees",
+          "90 degrees"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Hour hand moves 0.5° per minute, Minute hand moves 6° per minute. At 3:30, angle = |3×30 + 30×0.5 - 30×6| = 75°"
+      },
+      {
+        "question": "What is the value of x in the equation 2x + 5 = 11?",
+        "options": [
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "correctOptions": [2],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "Subtract 5 from both sides and divide by 2 to get x = 3."
+      },
+      {
+        "question": "What is the derivative of the function f(x) = 3x^2 + 2x - 5?",
+        "options": [
+          "6x + 2",
+          "6x - 2",
+          "6x + 1",
+          "6x - 1"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Use the power rule of differentiation to find the derivative."
+      },
+      {
+        "question": "If 75% of a number is 150, what is the number?",
+        "options": [
+          "100",
+          "150",
+          "200",
+          "250"
+        ],
+        "correctOptions": [2],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "75% of the number is 150, so 100% of the number is (150/75) × 100 = 200"
+      },
+      {
+        "question": "A train 100 meters long passes a pole in 10 seconds. What is its speed in km/hr?",
+        "options": [
+          "36 km/hr",
+          "72 km/hr",
+          "108 km/hr",
+          "144 km/hr"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "Speed = Distance / Time = 100 meters / 10 seconds = 10 meters/second. Convert to km/hr: 10 meters/second × 3600 seconds/hour / 1000 meters/km = 36 km/hr"
+      },
+      {
+        "question": "What is the primary principle of human ethics in technology?",
+        "options": [
+          "Beneficence",
+          "Non-maleficence",
+          "Autonomy",
+          "Justice"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Beneficence is the primary principle of human ethics in technology, aiming to do good and promote the well-being of individuals and society."
+      },
+      {
+        "question": "What is the most significant environmental impact of e-waste?",
+        "options": [
+          "Air pollution",
+          "Water pollution",
+          "Soil pollution",
+          "Climate change"
+        ],
+        "correctOptions": [2],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "easy",
+        "explanation": "Soil pollution is the most significant environmental impact of e-waste, as toxic chemicals like lead, mercury, and cadmium can contaminate soil and groundwater."
+      },
+      {
+        "question": "What is the primary principle of human values?",
+        "options": [
+          "Respect for autonomy",
+          "Non-maleficence",
+          "Beneficence",
+          "Justice"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Respect for autonomy is the primary principle of human values, ensuring that individuals have control over their own decisions and actions."
+      },
+      {
+        "question": "What is the concept of 'digital divide' in the context of human ethics?",
+        "options": [
+          "The gap between those with access to technology and those without",
+          "The difference between digital natives and digital immigrants",
+          "The disparity between urban and rural internet connectivity",
+          "The inequality between men and women in tech industry"
+        ],
+        "correctOptions": [0],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "The digital divide refers to the gap between individuals, communities, or societies that have access to modern information and communication technologies and those that do not."
+      },
+      {
+        "question": "What is the most important aspect of active listening?",
+        "options": [
+          "Maintaining eye contact",
+          "Asking questions",
+          "Giving feedback",
+          "Avoiding interruptions"
+        ],
+        "correctOptions": [3],
+        "answerType": "single",
+        "marks": 5,
+        "difficulty": "medium",
+        "explanation": "Avoiding interruptions is the most important aspect of active listening, allowing the speaker to fully express themselves."
+      }
+    ],
+    "codingChallenges": [
+      {
+        "title": "Sum of N Natural Numbers",
+        "description": "Calculate the sum of first n natural numbers efficiently",
+        "problemStatement": "Given an integer n, return the sum of numbers from 1 to n.",
+        "constraints": "1. 1 <= n <= 10^9\n2. Time Complexity should be O(1)\n3. Space Complexity should be O(1)",
+        "allowedLanguages": ["javascript", "python", "java","c","cpp"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "function sumNaturalNumbers(n) {\n    // Write your code here\n    // Try to submit your code in O(1) complexity\n    \n}",
+            "invisibleCode": "module.exports = sumNaturalNumbers;"
+          },
+          "python": {
+            "visibleCode": "def sum_n_natural_numbers_optimised(n):\n    # Write your code here\n    # Try to submit your code in O(1) complexity\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "public class Solution {\n    public long sumNaturalNumbers(int n) {\n        // Write your code here\n        // Try to submit your code in O(1) complexity\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "c": {
+            "visibleCode": "long sumNaturalNumbers(int n) {\n    // Write your code here\n    // Try to submit your code in O(1) complexity\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "long sumNaturalNumbers(int n) {\n    // Write your code here\n    // Try to submit your code in O(1) complexity\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          } 
+        },
+        "testCases": [
+          {
+            "input": "10",
+            "output": "55",
+            "isVisible": true,
+            "explanation": "Sum of numbers from 1 to 10 = 1 + 2 + 3 + ... + 10 = 55"
+          },
+          {
+            "input": "5",
+            "output": "15",
+            "isVisible": true,
+            "explanation": "Sum of numbers from 1 to 5 = 1 + 2 + 3 + 4 + 5 = 15"
+          },
+          {
+            "input": "100",
+            "output": "5050",
+            "isVisible": false,
+            "explanation": "Hidden test case for larger numbers"
+          },
+          {
+            "input": "1000",
+            "output": "500500",
+            "isVisible": false,
+            "explanation": "Hidden test case to test performance"
+          },
+          {
+            "input": "1",
+            "output": "1",
+            "isVisible": true,
+            "explanation": "Edge case with single number"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "easy",
+        "tags": ["math", "algorithms"]
+      },
+      {
+        "title": "Find Unique Element",
+        "description": "Find the unique element in an array where all other elements appear exactly twice",
+        "problemStatement": "You have been given an integer array/list(ARR) of size N, where N is equal to [2M + 1]. In the given array/list, 'M' numbers are present twice and one number is present only once. You need to find and return that number which is unique in the array/list.",
+        "constraints": "1. 1 <= t <= 10^2\n2. 0 <= N <= 10^6\n3. Time Complexity should be O(n)\n4. Space Complexity should be O(1)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp", "c"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "function findUnique(arr) {\n    // Write your code here\n    // Try to submit your code in O(n) Time complexity\n    \n}",
+            "invisibleCode": "module.exports = findUnique;"
+          },
+          "python": {
+            "visibleCode": "def findUnique(arr, n):\n    # Write your code here\n    # Try to submit your code in O(n) Time complexity\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "public class Solution {\n    public static int findUnique(int[] arr) {\n        //Your code goes here\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "int findUnique(int *arr, int n) {\n    // Write your code here\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "c": {
+            "visibleCode": "int FindDuplicate(int arr[], int size) {\n    /* Don't write main().\n     * Don't read input, it is passed as function argument.\n     * Return output and don't print it.\n     * Taking input and printing output is handled automatically.\n     */\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "[2, 3, 1, 6, 3, 6, 2]",
+            "output": "1",
+            "isVisible": true,
+            "explanation": "1 appears once while all other numbers appear twice"
+          },
+          {
+            "input": "[2, 4, 7, 2, 7]",
+            "output": "4",
+            "isVisible": true,
+            "explanation": "4 is the only element that appears once"
+          },
+          {
+            "input": "[1, 3, 1, 3, 6, 6, 7, 10, 7]",
+            "output": "10",
+            "isVisible": true,
+            "explanation": "10 appears once while all other numbers appear twice"
+          },
+          {
+            "input": "[5, 2, 5, 2, 8, 9, 9]",
+            "output": "8",
+            "isVisible": false,
+            "explanation": "Hidden test case for larger array"
+          },
+          {
+            "input": "[1, 1, 2]",
+            "output": "2",
+            "isVisible": false,
+            "explanation": "Hidden test case for minimum size array"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "medium",
+        "tags": ["arrays", "bit manipulation", "algorithms"]
+      },
+      {
+        "title": "Binary Search Implementation",
+        "description": "Implement binary search algorithm on a sorted array",
+        "problemStatement": "You are given an integer array 'A' of size 'N', sorted in non-decreasing order. You are also given an integer 'target'. Your task is to write a function to search for 'target' in the array 'A'. If it exists, return its index in 0-based indexing. If 'target' is not present in the array 'A', return -1.",
+        "constraints": "1. 1 <= N <= 10^5\n2. 1 <= A[i] <= 10^9\n3. 1 <= target <= 10^9\n4. Time Complexity must be O(LogN)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "function search(nums, target) {\n    // Write your code here.\n    \n}",
+            "invisibleCode": "module.exports.search = search;"
+          },
+          "python": {
+            "visibleCode": "def search(nums: [int], target: int):\n    # Write your code here\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "public class Solution {\n    public static int search(int []nums, int target) {\n        // Write your code here.\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "int search(vector<int> &nums, int target) {\n    // Write your code here.\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "[1, 3, 7, 9, 11, 12, 45], 3",
+            "output": "1",
+            "isVisible": true,
+            "explanation": "Element 3 is found at index 1"
+          },
+          {
+            "input": "[1, 2, 3, 4, 5, 6, 7], 9",
+            "output": "-1",
+            "isVisible": true,
+            "explanation": "Element 9 is not present in the array"
+          },
+          {
+            "input": "[1, 2, 3, 4, 5], 5",
+            "output": "4",
+            "isVisible": true,
+            "explanation": "Element 5 is found at last index 4"
+          },
+          {
+            "input": "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 1",
+            "output": "0",
+            "isVisible": false,
+            "explanation": "Hidden test case for first element"
+          },
+          {
+            "input": "[2, 4, 6, 8, 10, 12, 14, 16, 18, 20], 13",
+            "output": "-1",
+            "isVisible": false,
+            "explanation": "Hidden test case for element not present in middle range"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "easy",
+        "tags": ["arrays", "binary search", "algorithms"]
+      },
+      {
+        "title": "Second Largest Element",
+        "description": "Find the second largest element in an array with unique elements",
+        "problemStatement": "You have been given a random integer array/list(ARR) of size N. You are required to find and return the second-largest element present in the array/list. Note: All elements present in the array are unique.",
+        "constraints": "1. 0 <= N <= 10^2\n2. 1 <= arr[i] <= 10^3\n3. All elements are unique\n4. Time Complexity should be O(n)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp", "c"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "function findSecondLargest(arr) {\n    // Write your code here\n    // Return the second largest element\n    \n}",
+            "invisibleCode": "module.exports = findSecondLargest;"
+          },
+          "python": {
+            "visibleCode": "def second_largest(arr, n):\n    # Write your code here\n    # Return the second largest element\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "public class Solution {\n    public static int secondLargest(int[] arr) {\n        // Write your code here\n        // Return the second largest element\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "int findSecondLargest(vector<int> &arr, int n) {\n    // Write your code here\n    // Return the second largest element\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "c": {
+            "visibleCode": "int findSecondLargest(int arr[], int n) {\n    // Write your code here\n    // Return the second largest element\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "[4, 3, 10, 9, 2]",
+            "output": "9",
+            "isVisible": true,
+            "explanation": "10 is largest and 9 is second largest"
+          },
+          {
+            "input": "[13, 6, 31, 14, 29, 44, 3]",
+            "output": "31",
+            "isVisible": true,
+            "explanation": "44 is largest and 31 is second largest"
+          },
+          {
+            "input": "[5, 1, 3, 2, 4]",
+            "output": "4",
+            "isVisible": true,
+            "explanation": "5 is largest and 4 is second largest"
+          },
+          {
+            "input": "[100, 50, 75, 25, 90, 60]",
+            "output": "90",
+            "isVisible": false,
+            "explanation": "Hidden test case with larger numbers"
+          },
+          {
+            "input": "[1, 2]",
+            "output": "1",
+            "isVisible": false,
+            "explanation": "Hidden test case with minimum array size"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "easy",
+        "tags": ["arrays", "sorting", "algorithms"]
+      },
+      {
+        "title": "Power of X",
+        "description": "Calculate x raised to the power n efficiently",
+        "problemStatement": "Write a program to find x to the power n (i.e. x^n). Take x and n from the user. You need to print the answer. Note: For this question, you can assume that 0 raised to the power of 0 is 1.",
+        "constraints": "1. 0 <= x <= 8\n2. 0 <= n <= 9\n3. Time Complexity should be O(logn)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp", "c"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "function power(x, n) {\n    // Write your code here\n    // Return x raised to power n\n    \n}",
+            "invisibleCode": "module.exports = power;"
+          },
+          "python": {
+            "visibleCode": "## Write your code here\n## To take space separated input for two variables, we use the following syntax\n## a, b = input().split()\n## a = int(a)\n## b = int(b)",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "public class Solution {\n    public static void main(String[] args) {\n        // Write your code here\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "#include<iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "c": {
+            "visibleCode": "#include <stdio.h>\n\nint main() {\n    // Write your code here\n    \n}",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "3 4",
+            "output": "81",
+            "isVisible": true,
+            "explanation": "3^4 = 3 * 3 * 3 * 3 = 81"
+          },
+          {
+            "input": "2 5",
+            "output": "32",
+            "isVisible": true,
+            "explanation": "2^5 = 2 * 2 * 2 * 2 * 2 = 32"
+          },
+          {
+            "input": "0 0",
+            "output": "1",
+            "isVisible": true,
+            "explanation": "As per the note, 0^0 = 1"
+          },
+          {
+            "input": "8 9",
+            "output": "134217728",
+            "isVisible": false,
+            "explanation": "Hidden test case for maximum constraints"
+          },
+          {
+            "input": "5 0",
+            "output": "1",
+            "isVisible": false,
+            "explanation": "Hidden test case for power 0"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "easy",
+        "tags": ["math", "recursion", "algorithms"]
+      },
+      {
+        "title": "Append Last N to First",
+        "description": "Append last N nodes of a linked list to its beginning",
+        "problemStatement": "You have been given a singly linked list of integers along with an integer 'N'. Write a function to append the last 'N' nodes towards the front of the singly linked list and returns the new head to the list. Note: While specifying the list elements for input, -1 indicates the end of the singly linked list and hence, would never be a list element.",
+        "constraints": "1. 1 <= t <= 10^2\n2. 0 <= M <= 10^5\n3. 0 <= N < M\n4. Time Complexity should be O(n)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp"],
+        "languageImplementations": {
+          "python": {
+            "visibleCode": "from sys import stdin\n\n#Following is the Node class already written for the Linked List\nclass Node :\n    def __init__(self, data) :\n        self.data = data\n        self.next = None\n\ndef appendLastNToFirst(head, n) :\n    #Your code goes here\n\n#Taking Input Using Fast I/O\ndef takeInput() :\n    head = None\n    tail = None\n\n    datas = list(map(int, stdin.readline().rstrip().split(\" \")))\n\n    i = 0\n    while (i < len(datas)) and (datas[i] != -1) :\n        data = datas[i]\n        newNode = Node(data)\n\n        if head is None :\n            head = newNode\n            tail = newNode\n\n        else :\n            tail.next = newNode\n            tail = newNode\n\n        i += 1\n\n    return head\n\n#to print the linked list \ndef printLinkedList(head) :\n    while head is not None :\n        print(head.data, end = \" \")\n        head = head.next\n    print()\n\n#main\nt = int(stdin.readline().rstrip())\n\nwhile t > 0 :\n    head = takeInput()\n    n = int(stdin.readline().rstrip())\n    head = appendLastNToFirst(head, n)\n    printLinkedList(head)\n    t -= 1",
+            "invisibleCode": "# Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "/****************************************************************\n\n    Following is the class structure of the Node class:\n\n        class Node\n        {\n        public:\n            int data;\n            Node *next;\n            Node(int data)\n            {\n                this->data = data;\n                this->next = NULL;\n            }\n        };\n\n*****************************************************************/\n\nNode *appendLastNToFirst(Node *head, int n)\n{\n    //Write your code here\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "java": {
+            "visibleCode": "/*\n\n    Following is the Node class already written for the Linked List\n\n    class Node<T> {\n        T data;\n        Node<T> next;\n    \n        public Node(T data) {\n            this.data = data;\n        }\n    }\n\n*/\n\npublic class Solution {\n\n    public static Node<Integer> appendLastNToFirst(Node<Integer> head, int n) {\n        //Your code goes here\n    }\n\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "javascript": {
+            "visibleCode": "function appendLastNToFirst(head, n) {\n    // Write your code here\n    \n}",
+            "invisibleCode": "module.exports = appendLastNToFirst;"
+          }
+        },
+        "testCases": [
+          {
+            "input": "1 2 3 4 5 -1\n3",
+            "output": "3 4 5 1 2",
+            "isVisible": true,
+            "explanation": "Last 3 nodes (3,4,5) are moved to front"
+          },
+          {
+            "input": "10 20 30 40 50 60 -1\n5",
+            "output": "20 30 40 50 60 10",
+            "isVisible": true,
+            "explanation": "Last 5 nodes are moved to front"
+          },
+          {
+            "input": "10 6 77 90 61 67 100 -1\n4",
+            "output": "90 61 67 100 10 6 77",
+            "isVisible": true,
+            "explanation": "Last 4 nodes (90,61,67,100) are moved to front"
+          },
+          {
+            "input": "1 2 3 4 5 6 7 8 9 10 -1\n0",
+            "output": "1 2 3 4 5 6 7 8 9 10",
+            "isVisible": false,
+            "explanation": "Hidden test case for n=0"
+          },
+          {
+            "input": "1 -1\n0",
+            "output": "1",
+            "isVisible": false,
+            "explanation": "Hidden test case for single node"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "medium",
+        "tags": ["linked list", "two pointer", "data structures"]
+      },
+      {
+        "title": "Decode Ways",
+        "description": "Find the number of ways to decode a string of digits into letters",
+        "problemStatement": "You have intercepted a secret message encoded as a string of numbers. The message is decoded via the following mapping:\n\n'1' -> 'A'\n'2' -> 'B'\n...\n'25' -> 'Y'\n'26' -> 'Z'\n\nGiven a string s containing only digits, return the number of ways to decode it. If the entire string cannot be decoded in any valid way, return 0.\n\nNote:\n- A code starting with '0' is invalid\n- The answer will fit in a 32-bit integer",
+        "constraints": "1. 1 <= s.length <= 100\n2. s contains only digits\n3. s may contain leading zero(s)\n4. Time Complexity should be O(n)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "/**\n * @param {string} s\n * @return {number}\n */\nfunction numDecodings(s) {\n    // Write your code here\n    \n}",
+            "invisibleCode": "module.exports = numDecodings;"
+          },
+          "python": {
+            "visibleCode": "def numDecodings(s: str) -> int:\n    # Write your code here\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "class Solution {\n    public int numDecodings(String s) {\n        // Write your code here\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "class Solution {\npublic:\n    int numDecodings(string s) {\n        // Write your code here\n        \n    }\n};",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "12",
+            "output": "2",
+            "isVisible": true,
+            "explanation": "'12' can be decoded as 'AB' (1 2) or 'L' (12)"
+          },
+          {
+            "input": "226",
+            "output": "3",
+            "isVisible": true,
+            "explanation": "'226' can be decoded as 'BZ' (2 26), 'VF' (22 6), or 'BBF' (2 2 6)"
+          },
+          {
+            "input": "06",
+            "output": "0",
+            "isVisible": true,
+            "explanation": "'06' is invalid due to leading zero"
+          },
+          {
+            "input": "27",
+            "output": "1",
+            "isVisible": false,
+            "explanation": "Hidden test case: only one way as 27 > 26"
+          },
+          {
+            "input": "1201234",
+            "output": "3",
+            "isVisible": false,
+            "explanation": "Hidden test case with zero in middle"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "medium",
+        "tags": ["dynamic programming", "string", "algorithms"]
+      },
+      {
+        "title": "Excel Sheet Column Number",
+        "description": "Convert Excel column title to its corresponding column number",
+        "problemStatement": "Given a string columnTitle that represents the column title as appears in an Excel sheet, return its corresponding column number.\n\nFor example:\nA -> 1\nB -> 2\nC -> 3\n...\nZ -> 26\nAA -> 27\nAB -> 28\n...",
+        "constraints": "1. 1 <= columnTitle.length <= 7\n2. columnTitle consists only of uppercase English letters\n3. columnTitle is in the range ['A', 'FXSHRXW']\n4. Time Complexity should be O(n)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "/**\n * @param {string} columnTitle\n * @return {number}\n */\nfunction titleToNumber(columnTitle) {\n    // Write your code here\n    \n}",
+            "invisibleCode": "module.exports = titleToNumber;"
+          },
+          "python": {
+            "visibleCode": "def titleToNumber(columnTitle: str) -> int:\n    # Write your code here\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "class Solution {\n    public int titleToNumber(String columnTitle) {\n        // Write your code here\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "class Solution {\npublic:\n    int titleToNumber(string columnTitle) {\n        // Write your code here\n        \n    }\n};",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "A",
+            "output": "1",
+            "isVisible": true,
+            "explanation": "A is the first column"
+          },
+          {
+            "input": "AB",
+            "output": "28",
+            "isVisible": true,
+            "explanation": "A = 1, B = 2. AB = 26 * 1 + 2 = 28"
+          },
+          {
+            "input": "ZY",
+            "output": "701",
+            "isVisible": true,
+            "explanation": "Z = 26, Y = 25. ZY = 26 * 26 + 25 = 701"
+          },
+          {
+            "input": "AAA",
+            "output": "703",
+            "isVisible": false,
+            "explanation": "Hidden test case for three-letter column"
+          },
+          {
+            "input": "FXSHRXW",
+            "output": "2147483647",
+            "isVisible": false,
+            "explanation": "Hidden test case for maximum possible value"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "easy",
+        "tags": ["math", "string", "algorithms"]
+      },
+      {
+        "title": "Caesar Cipher Decoder",
+        "description": "Implement a Caesar cipher decryption algorithm",
+        "problemStatement": "Given an encrypted string and a shift value (key), implement the Caesar cipher decryption. In Caesar cipher, each letter in the plaintext is shifted a certain number of places down the alphabet. For example, with a shift of 3, 'D' would be replaced by 'A', 'E' would become 'B', and so on.\n\nNote:\n- The string will only contain uppercase letters and spaces\n- Spaces should remain unchanged\n- The shift value will be between 1 and 25",
+        "constraints": "1. 1 <= message.length <= 1000\n2. 1 <= shift <= 25\n3. message contains only uppercase letters and spaces",
+        "allowedLanguages": ["javascript", "python", "java", "cpp"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "/**\n * @param {string} message - encrypted message\n * @param {number} shift - shift value\n * @return {string} - decrypted message\n */\nfunction caesarDecrypt(message, shift) {\n    // Write your code here\n    \n}",
+            "invisibleCode": "module.exports = caesarDecrypt;"
+          },
+          "python": {
+            "visibleCode": "def caesar_decrypt(message: str, shift: int) -> str:\n    # Write your code here\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "class Solution {\n    public String caesarDecrypt(String message, int shift) {\n        // Write your code here\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "class Solution {\npublic:\n    string caesarDecrypt(string message, int shift) {\n        // Write your code here\n        \n    }\n};",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "KHOOR 3",
+            "output": "HELLO",
+            "isVisible": true,
+            "explanation": "Each letter is shifted back 3 positions"
+          },
+          {
+            "input": "DWWDFN DW GDZQ 3",
+            "output": "ATTACK AT DAWN",
+            "isVisible": true,
+            "explanation": "Spaces remain unchanged, letters shifted back 3"
+          },
+          {
+            "input": "ZZZZ 1",
+            "output": "YYYY",
+            "isVisible": true,
+            "explanation": "Testing wrap-around from Z to Y"
+          },
+          {
+            "input": "ABCDEFGHIJKLMNOPQRSTUVWXYZ 23",
+            "output": "DEFGHIJKLMNOPQRSTUVWXYZABC",
+            "isVisible": false,
+            "explanation": "Hidden test case with all alphabet letters"
+          },
+          {
+            "input": "SECURITY BASICS 15",
+            "output": "DPNFCTEK MLDTND",
+            "isVisible": false,
+            "explanation": "Hidden test case with larger shift"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "easy",
+        "tags": ["cryptography", "string manipulation", "security"]
+      },
+      {
+        "title": "Password Strength Validator",
+        "description": "Implement a password strength checker",
+        "problemStatement": "Implement a password strength validator that returns a score from 0 to 5 based on the following criteria:\n\n+1 point for length >= 8\n+1 point for containing both upper and lowercase letters\n+1 point for containing numbers\n+1 point for containing special characters (!@#$%^&*)\n+1 point for not containing common patterns (123, abc, qwerty)\n\nReturn the final score of the password.",
+        "constraints": "1. 1 <= password.length <= 50\n2. password contains only printable ASCII characters\n3. Time Complexity should be O(n)",
+        "allowedLanguages": ["javascript", "python", "java", "cpp"],
+        "languageImplementations": {
+          "javascript": {
+            "visibleCode": "/**\n * @param {string} password\n * @return {number} strength score (0-5)\n */\nfunction checkPasswordStrength(password) {\n    // Write your code here\n    \n}",
+            "invisibleCode": "module.exports = checkPasswordStrength;"
+          },
+          "python": {
+            "visibleCode": "def check_password_strength(password: str) -> int:\n    # Write your code here\n    pass",
+            "invisibleCode": "# Test helper code here"
+          },
+          "java": {
+            "visibleCode": "class Solution {\n    public int checkPasswordStrength(String password) {\n        // Write your code here\n        \n    }\n}",
+            "invisibleCode": "// Test helper code here"
+          },
+          "cpp": {
+            "visibleCode": "class Solution {\npublic:\n    int checkPasswordStrength(string password) {\n        // Write your code here\n        \n    }\n};",
+            "invisibleCode": "// Test helper code here"
+          }
+        },
+        "testCases": [
+          {
+            "input": "Password123!",
+            "output": "5",
+            "isVisible": true,
+            "explanation": "Meets all criteria: length, upper/lower, numbers, special chars, no patterns"
+          },
+          {
+            "input": "abc123",
+            "output": "2",
+            "isVisible": true,
+            "explanation": "Only has numbers and contains common pattern 'abc'"
+          },
+          {
+            "input": "ADMIN123",
+            "output": "2",
+            "isVisible": true,
+            "explanation": "Has length and numbers, but missing lowercase and special chars"
+          },
+          {
+            "input": "P@ssw0rd",
+            "output": "4",
+            "isVisible": false,
+            "explanation": "Hidden test case: common password pattern"
+          },
+          {
+            "input": "!@#$%^&*()",
+            "output": "2",
+            "isVisible": false,
+            "explanation": "Hidden test case: only special characters"
+          }
+        ],
+        "marks": 15,
+        "timeLimit": 1000,
+        "memoryLimit": 128,
+        "difficulty": "medium",
+        "tags": ["security", "string manipulation", "validation"]
+      }
+    ],
+    "accessControl": {
+      "type": "private"
+    }
+  }  

@@ -1440,4 +1440,45 @@ router.get(
   getUserTestResults
 );
 
+/**
+ * @swagger
+ * /api/vendor/tests/{testId}:
+ *   delete:
+ *     summary: Delete a specific test owned by the vendor
+ *     tags: [Vendor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: testId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Test deleted successfully
+ *       403:
+ *         description: Forbidden - Test doesn't belong to vendor
+ *       404:
+ *         description: Test not found
+ */
+router.delete("/tests/:testId", auth, checkRole(["vendor"]), checkVendorApproval, async (req, res) => {
+  try {
+    const test = await Test.findOne({
+      _id: req.params.testId,
+      vendor: req.user._id
+    });
+    
+    if (!test) {
+      return res.status(404).json({ error: "Test not found or you don't have permission to delete it" });
+    }
+
+    await Test.findByIdAndDelete(req.params.testId);
+    res.json({ message: "Test deleted successfully" });
+  } catch (error) {
+    console.error('Error deleting test:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router; 
