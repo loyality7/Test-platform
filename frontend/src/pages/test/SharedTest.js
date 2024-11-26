@@ -31,9 +31,15 @@ export default function SharedTest() {
         }
 
         // Check if test is private and user doesn't have access
-        if (verifyResponse.test.visibility === 'private') {
+        if (verifyResponse.test.accessControl?.type === 'private') {
           const userRole = localStorage.getItem('userRole');
-          if (userRole !== 'admin' && userRole !== 'vendor') {
+          const userEmail = localStorage.getItem('userEmail');
+          
+          const isAllowedUser = verifyResponse.test.accessControl?.allowedUsers?.some(
+            user => user.email === userEmail
+          );
+          
+          if (!isAllowedUser && userRole !== 'admin' && userRole !== 'vendor') {
             throw new Error('You do not have access to this test');
           }
         }

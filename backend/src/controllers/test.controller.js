@@ -161,7 +161,7 @@ export const getTests = async (req, res) => {
       .select('-mcqs.correctOptions -codingChallenges.testCases')
       .sort({ createdAt: -1 });
 
-    // Transform the response without language ID conversion
+    // Transform the response
     const transformedTests = tests.map(test => ({
       _id: test._id,
       title: test.title,
@@ -174,11 +174,19 @@ export const getTests = async (req, res) => {
       category: test.category,
       difficulty: test.difficulty,
       accessControl: {
-        type: test.accessControl.type
+        type: test.accessControl?.type || 'private',
+        userLimit: test.accessControl?.userLimit || 0,
+        allowedUsers: test.accessControl?.allowedUsers?.map(user => ({
+          email: user.email,
+          name: user.name,
+          addedAt: user.addedAt
+        })) || [],
+        allowedEmails: test.accessControl?.allowedEmails || [],
+        currentUserCount: test.accessControl?.allowedUsers?.length || 0
       },
       vendor: {
-        name: test.vendor.name,
-        email: test.vendor.email
+        name: test.vendor?.name,
+        email: test.vendor?.email
       },
       mcqs: test.mcqs?.map(mcq => ({
         question: mcq.question,
@@ -195,8 +203,8 @@ export const getTests = async (req, res) => {
         timeLimit: challenge.timeLimit,
         memoryLimit: challenge.memoryLimit,
         difficulty: challenge.difficulty,
-        allowedLanguages: challenge.allowedLanguages, // Return languages as-is
-        languageImplementations: challenge.languageImplementations // Return implementations as-is
+        allowedLanguages: challenge.allowedLanguages,
+        languageImplementations: challenge.languageImplementations
       })) || [],
       questionCounts: {
         mcq: test.mcqs?.length || 0,
@@ -235,9 +243,20 @@ export const getTestById = async (req, res) => {
       return res.status(403).json({ error: "Not authorized to access this test" });
     }
 
-    // Transform language IDs to names in coding challenges
+    // Transform the response
     const transformedTest = {
       ...test,
+      accessControl: {
+        type: test.accessControl?.type || 'private',
+        userLimit: test.accessControl?.userLimit || 0,
+        allowedUsers: test.accessControl?.allowedUsers?.map(user => ({
+          email: user.email,
+          name: user.name,
+          addedAt: user.addedAt
+        })) || [],
+        allowedEmails: test.accessControl?.allowedEmails || [],
+        currentUserCount: test.accessControl?.allowedUsers?.length || 0
+      },
       codingChallenges: test.codingChallenges?.map(challenge => ({
         ...challenge,
         allowedLanguages: challenge.allowedLanguages?.map(langId => 
