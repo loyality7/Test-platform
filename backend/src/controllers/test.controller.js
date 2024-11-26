@@ -1466,7 +1466,7 @@ export const createTestSession = async (req, res) => {
 export const addAllowedUsers = async (req, res) => {
   try {
     const { testId } = req.params;
-    const { userIds } = req.body;
+    const { users } = req.body; // Expect array of {email, name} objects
 
     const test = await Test.findById(testId);
     if (!test) {
@@ -1478,23 +1478,35 @@ export const addAllowedUsers = async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // Initialize allowedUsers array if it doesn't exist
-    if (!test.accessControl.allowedUsers) {
-      test.accessControl.allowedUsers = [];
+    // Initialize accessControl if needed
+    if (!test.accessControl) {
+      test.accessControl = {
+        type: 'private',
+        userLimit: 0,
+        allowedUsers: [],
+        allowedEmails: [],
+        currentUserCount: 0
+      };
     }
 
     // Add new users to allowedUsers array (avoiding duplicates)
-    const newUserIds = userIds.filter(
-      userId => !test.accessControl.allowedUsers.includes(userId)
-    );
-    test.accessControl.allowedUsers.push(...newUserIds);
+    const existingEmails = test.accessControl.allowedUsers.map(user => user.email);
+    const newUsers = users.filter(user => !existingEmails.includes(user.email))
+      .map(user => ({
+        email: user.email,
+        name: user.name,
+        addedAt: new Date()
+      }));
+
+    test.accessControl.allowedUsers.push(...newUsers);
+    test.accessControl.currentUserCount = test.accessControl.allowedUsers.length;
 
     await test.save();
 
     res.json({
       message: "Users added successfully",
-      addedUsers: newUserIds,
-      totalAllowedUsers: test.accessControl.allowedUsers.length
+      addedUsers: newUsers,
+      currentUserCount: test.accessControl.currentUserCount
     });
   } catch (error) {
     if (error.name === 'CastError') {
@@ -1513,7 +1525,7 @@ export const addAllowedUsers = async (req, res) => {
 export const removeAllowedUsers = async (req, res) => {
   try {
     const { testId } = req.params;
-    const { userIds } = req.body;
+    const { emails } = req.body; // Expect array of email strings
 
     const test = await Test.findById(testId);
     if (!test) {
@@ -1525,26 +1537,20 @@ export const removeAllowedUsers = async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // Initialize allowedUsers array if it doesn't exist
-    if (!test.accessControl.allowedUsers) {
-      test.accessControl.allowedUsers = [];
-    }
-
     // Remove users from allowedUsers array
-    const initialLength = test.accessControl.allowedUsers.length;
+    const initialCount = test.accessControl.allowedUsers.length;
     test.accessControl.allowedUsers = test.accessControl.allowedUsers.filter(
-      userId => !userIds.includes(userId.toString())
+      user => !emails.includes(user.email)
     );
-
-    const removedCount = initialLength - test.accessControl.allowedUsers.length;
+    test.accessControl.currentUserCount = test.accessControl.allowedUsers.length;
 
     await test.save();
 
     res.json({
       message: "Users removed successfully",
-      removedCount,
-      remainingUsers: test.accessControl.allowedUsers.length,
-      removedUsers: userIds
+      removedCount: initialCount - test.accessControl.currentUserCount,
+      currentUserCount: test.accessControl.currentUserCount,
+      removedEmails: emails
     });
   } catch (error) {
     if (error.name === 'CastError') {
@@ -1994,13 +2000,13 @@ export const updateTestAccess = async (req, res) => {
 
     // Check authorization
     if (!req.user.isAdmin && test.vendor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Not authorized to update test access" });
+      return res.status(403).json({ error: "Not authorized" });
     }
 
     // Validate access control type
     if (!accessControl || !['public', 'private', 'restricted', 'invitation'].includes(accessControl.type)) {
       return res.status(400).json({
-        error: "Invalid access control type. Must be 'public', 'private', 'restricted', or 'invitation'",
+        error: "Invalid access control type",
         receivedType: accessControl?.type
       });
     }
@@ -2008,18 +2014,17 @@ export const updateTestAccess = async (req, res) => {
     // Update access control settings
     test.accessControl = {
       type: accessControl.type,
-      // Copy any additional access control settings
+      userLimit: accessControl.userLimit || 0,
+      allowedUsers: test.accessControl?.allowedUsers || [],
+      allowedEmails: accessControl.allowedEmails || [],
+      currentUserCount: test.accessControl?.currentUserCount || 0,
       ...(accessControl.password && { password: accessControl.password }),
       ...(accessControl.validUntil && { validUntil: new Date(accessControl.validUntil) }),
-      ...(accessControl.maxAttempts && { maxAttempts: accessControl.maxAttempts }),
-      ...(accessControl.allowedUsers && { allowedUsers: accessControl.allowedUsers }),
-      ...(accessControl.allowedDomains && { allowedDomains: accessControl.allowedDomains }),
       updatedAt: new Date()
     };
 
     await test.save();
 
-    // Return sanitized response (exclude sensitive data)
     res.json({
       message: "Test access updated successfully",
       test: {
@@ -2027,9 +2032,8 @@ export const updateTestAccess = async (req, res) => {
         title: test.title,
         accessControl: {
           type: test.accessControl.type,
-          ...(test.accessControl.validUntil && { validUntil: test.accessControl.validUntil }),
-          ...(test.accessControl.maxAttempts && { maxAttempts: test.accessControl.maxAttempts }),
-          ...(test.accessControl.allowedDomains && { allowedDomains: test.accessControl.allowedDomains }),
+          userLimit: test.accessControl.userLimit,
+          currentUserCount: test.accessControl.currentUserCount,
           updatedAt: test.accessControl.updatedAt
         }
       }
