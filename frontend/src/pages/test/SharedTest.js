@@ -87,7 +87,7 @@ export default function SharedTest() {
         throw new Error('Registration failed');
       }
 
-      // Create a new session with initial 'active' status
+      // After successful registration, create a new session
       const sessionResponse = await apiService.post(`tests/${uuid}/session`, {
         deviceInfo: {
           userAgent: navigator.userAgent,
@@ -98,7 +98,7 @@ export default function SharedTest() {
       });
 
       if (sessionResponse?.session?._id) {
-        // Store test data and session info with initial 'active' status
+        // Store test data and session info
         localStorage.setItem('currentTestData', JSON.stringify({
           id: test.id,
           uuid: uuid,
@@ -112,15 +112,20 @@ export default function SharedTest() {
           sessionId: sessionResponse.session._id,
           testId: uuid,
           startTime: new Date().toISOString(),
-          status: 'active' // Initial status
+          status: 'active'
         }));
 
+        // Show success message before navigation
+        toast.success('Successfully registered for the test');
+        
+        // Navigate to test
         navigate(`/test/take/${uuid}?session=${sessionResponse.session._id}`);
       }
     } catch (error) {
       console.error('Registration error:', error);
-      toast.error(error.message || 'Failed to register for test');
-      setError(error.message);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to register for test';
+      toast.error(errorMessage);
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

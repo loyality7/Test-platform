@@ -2206,56 +2206,67 @@ export const getPublicTestCategories = async (req, res) => {
 export const registerForTest = async (req, res) => {
   try {
     const { uuid } = req.params;
-    const test = await Test.findOne({ uuid });
+    const userEmail = req.user.email;
+    const userRole = req.user.role;
+
+    // Find test and check if it exists
+    const test = await Test.findOne({ uuid })
+      .populate('vendor', 'name email')
+      .lean();
 
     if (!test) {
-      return res.status(404).json({ message: 'Test not found' });
+      return res.status(404).json({ 
+        message: 'Test not found' 
+      });
     }
 
-    // Check if user is admin or vendor
-    const isAdmin = req.user.role === 'admin';
-    const isVendor = test.vendor.toString() === req.user._id.toString();
+    // Check authorization
+    const isAdmin = userRole === 'admin';
+    const isVendor = test.vendor._id.toString() === req.user._id.toString();
+    const isAllowedUser = test.accessControl?.allowedUsers?.some(
+      user => user.email === userEmail
+    );
 
-    // Check visibility and access
-    const isPublic = test.accessControl.type === 'public';
-    const isPractice = test.type === 'practice';
-    const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
-
-    // Determine if user can register
-    const canRegister = isAdmin || isVendor || isPublic || isPractice || isAllowed;
-
-    if (!canRegister) {
-      return res.status(403).json({ message: 'You are not authorized to take this test' });
+    if (!isAdmin && !isVendor && !isAllowedUser) {
+      return res.status(403).json({ 
+        message: 'You are not authorized to take this test' 
+      });
     }
 
-    // Check for existing registration
+    // Check if already registered
     const existingRegistration = await TestRegistration.findOne({
       test: test._id,
       user: req.user._id
     });
 
     if (existingRegistration) {
-      return res.status(400).json({ message: 'You are already registered for this test' });
-    }
-
-    // For assessment tests, check if already completed
-    if (test.type === 'assessment') {
-      const existingSubmission = await TestResult.findOne({
-        test: test._id,
-        user: req.user._id,
-        status: 'completed'
+      return res.status(400).json({
+        message: 'You are already registered for this test'
       });
-
-      if (existingSubmission) {
-        return res.status(400).json({ message: 'You have already completed this test' });
-      }
     }
 
-    // Create registration and session
-    // ... rest of the existing registration code ...
+    // Create registration
+    const registration = await TestRegistration.create({
+      test: test._id,
+      user: req.user._id,
+      registeredAt: new Date(),
+      status: 'registered',
+      registrationType: isAllowedUser ? 'invited' : 'self',
+      userEmail: userEmail
+    });
+
+    res.status(201).json({
+      message: 'Successfully registered for test',
+      registration: {
+        id: registration._id,
+        registeredAt: registration.registeredAt,
+        status: registration.status
+      }
+    });
+
   } catch (error) {
     console.error('Error in registerForTest:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error registering for test',
       error: error.message
     });
