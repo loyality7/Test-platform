@@ -928,6 +928,34 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
                 </div>
               )}
 
+              {/* Sample Test Cases */}
+              {challenge?.testCases?.filter(test => !test.isHidden)?.length > 0 && (
+                <div className="bg-[#2d2d2d] p-3 rounded-lg">
+                  <h3 className="font-medium mb-2">Sample Test Cases</h3>
+                  <div className="space-y-4">
+                    {challenge.testCases
+                      .filter(test => !test.isHidden)
+                      .map((test, index) => (
+                        <div key={index} className="space-y-2">
+                          <div className="text-sm text-gray-400">Test Case {index + 1}</div>
+                          <div className="bg-[#363636] p-2 rounded">
+                            <div className="text-gray-400 text-xs mb-1">Input:</div>
+                            <pre className="text-gray-300 font-mono text-sm whitespace-pre-wrap">
+                              {test.input}
+                            </pre>
+                          </div>
+                          <div className="bg-[#363636] p-2 rounded">
+                            <div className="text-gray-400 text-xs mb-1">Expected Output:</div>
+                            <pre className="text-gray-300 font-mono text-sm whitespace-pre-wrap">
+                              {test.output}
+                            </pre>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               {/* Technical Details */}
               <div className="bg-[#2d2d2d] p-3 rounded-lg">
                 <h3 className="font-medium mb-2">Technical Details</h3>
