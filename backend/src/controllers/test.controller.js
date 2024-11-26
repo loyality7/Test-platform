@@ -799,7 +799,8 @@ export const deleteCodingChallenge = async (req, res) => {
 // Publish Test
 export const publishTest = async (req, res) => {
   try {
-    const test = await Test.findById(req.params.testId);
+    const { testId } = req.params;
+    const test = await Test.findById(testId);
     
     if (!test) {
       return res.status(404).json({ error: "Test not found" });
@@ -810,16 +811,13 @@ export const publishTest = async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // Validate test has required components
-    if (!test.mcqs || test.mcqs.length === 0) {
-      return res.status(400).json({ 
-        error: "Test must have at least one MCQ question" 
-      });
-    }
+    // Check if test has at least one type of question
+    const hasMCQs = test.mcqs && test.mcqs.length > 0;
+    const hasCoding = test.codingChallenges && test.codingChallenges.length > 0;
 
-    if (!test.codingChallenges || test.codingChallenges.length === 0) {
+    if (!hasMCQs && !hasCoding) {
       return res.status(400).json({ 
-        error: "Test must have at least one coding challenge" 
+        error: "Test must have at least one MCQ or coding challenge" 
       });
     }
 
@@ -838,11 +836,17 @@ export const publishTest = async (req, res) => {
         _id: test._id,
         title: test.title,
         publishedAt: test.publishedAt,
-        accessControl: test.accessControl?.type || 'private'
+        accessControl: test.accessControl?.type || 'private',
+        questionCounts: {
+          mcq: test.mcqs?.length || 0,
+          coding: test.codingChallenges?.length || 0
+        }
       },
       shareableLink
     });
+
   } catch (error) {
+    console.error('Error in publishTest:', error);
     res.status(500).json({ error: error.message });
   }
 };
