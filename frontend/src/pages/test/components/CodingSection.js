@@ -929,12 +929,12 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
               )}
 
               {/* Sample Test Cases */}
-              {challenge?.testCases?.filter(test => !test.isHidden)?.length > 0 && (
+              {challenge?.testCases?.filter(test => test.showInDescription)?.length > 0 && (
                 <div className="bg-[#2d2d2d] p-3 rounded-lg">
                   <h3 className="font-medium mb-2">Sample Test Cases</h3>
                   <div className="space-y-4">
                     {challenge.testCases
-                      .filter(test => !test.isHidden)
+                      .filter(test => test.showInDescription)
                       .map((test, index) => (
                         <div key={index} className="space-y-2">
                           <div className="text-sm text-gray-400">Test Case {index + 1}</div>
