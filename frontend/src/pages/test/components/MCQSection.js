@@ -82,8 +82,24 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs, analytics, setAnal
 
   const handleOptionSelect = (questionId, optionIndex) => {
     setAnswers(prev => {
-      const prevAnswer = prev[questionId]?.selectedOptions?.[0];
-      if (prevAnswer !== undefined) {
+      const currentQuestion = mcqs.find(mcq => mcq._id === questionId);
+      const prevAnswer = prev[questionId]?.selectedOptions || [];
+      
+      let newSelectedOptions;
+      if (currentQuestion.answerType === 'single') {
+        // For single choice, replace the answer
+        newSelectedOptions = [optionIndex];
+      } else {
+        // For multiple choice, toggle the selection
+        if (prevAnswer.includes(optionIndex)) {
+          newSelectedOptions = prevAnswer.filter(idx => idx !== optionIndex);
+        } else {
+          newSelectedOptions = [...prevAnswer, optionIndex];
+        }
+      }
+
+      // Track answer changes only for single choice questions
+      if (currentQuestion.answerType === 'single' && prevAnswer.length > 0) {
         setAnalytics(prev => ({
           ...prev,
           mcqMetrics: {
@@ -95,10 +111,11 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs, analytics, setAnal
           }
         }));
       }
+
       return {
         ...prev,
         [questionId]: {
-          selectedOptions: [optionIndex]
+          selectedOptions: newSelectedOptions
         }
       };
     });
@@ -223,26 +240,41 @@ export default function MCQPage({ mcqs, testId, onSubmitMCQs, analytics, setAnal
 
           {/* Options */}
           <div className="space-y-3">
-            {mcqs[currentMcq].options.map((option, index) => (
-              <div
-                key={index}
-                onClick={() => handleOptionSelect(mcqs[currentMcq]._id, index)}
-                className={`p-3 rounded-lg border cursor-pointer transition-all
-                  ${answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'}
-                `}
-              >
-                <div className="flex items-center gap-2">
-                  {answers[mcqs[currentMcq]._id]?.selectedOptions[0] === index ? (
-                    <CheckCircle2 className="w-5 h-5 text-blue-500" />
-                  ) : (
-                    <Circle className="w-5 h-5 text-gray-400" />
-                  )}
-                  <span>{option}</span>
+            {mcqs[currentMcq].options.map((option, index) => {
+              const isSelected = answers[mcqs[currentMcq]._id]?.selectedOptions?.includes(index);
+              const isSingleChoice = mcqs[currentMcq].answerType === 'single';
+
+              return (
+                <div
+                  key={index}
+                  onClick={() => handleOptionSelect(mcqs[currentMcq]._id, index)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all
+                    ${isSelected
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'}
+                  `}
+                >
+                  <div className="flex items-center gap-2">
+                    {isSingleChoice ? (
+                      isSelected ? (
+                        <CheckCircle2 className="w-5 h-5 text-blue-500" />
+                      ) : (
+                        <Circle className="w-5 h-5 text-gray-400" />
+                      )
+                    ) : (
+                      <div className={`w-5 h-5 border-2 rounded ${
+                        isSelected 
+                          ? 'bg-blue-500 border-blue-500 flex items-center justify-center' 
+                          : 'border-gray-400'
+                      }`}>
+                        {isSelected && <Check className="w-4 h-4 text-white" />}
+                      </div>
+                    )}
+                    <span>{option}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Navigation */}

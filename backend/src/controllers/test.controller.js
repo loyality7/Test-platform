@@ -1304,13 +1304,6 @@ export const checkTestRegistration = async (req, res) => {
       });
     }
 
-    // Check authorization
-    const isAdmin = userRole === 'admin';
-    const isVendor = test.vendor._id.toString() === req.user._id.toString();
-    const isAllowedUser = test.accessControl?.allowedUsers?.some(
-      user => user.email === userEmail
-    );
-
     // Get existing registration if any
     const existingRegistration = await TestRegistration.findOne({
       test: test._id,
@@ -1323,8 +1316,19 @@ export const checkTestRegistration = async (req, res) => {
       user: req.user._id
     }).sort({ startTime: -1 });
 
-    // Determine access and registration status
-    const canAccess = isAdmin || isVendor || isAllowedUser;
+    // Determine access based on test type and user role
+    let canAccess = false;
+    if (test.type === 'practice') {
+      // Practice tests are accessible to all authenticated users
+      canAccess = true;
+    } else {
+      // For assessment tests, check specific permissions
+      canAccess = userRole === 'admin' || 
+                  test.vendor._id.toString() === req.user._id.toString() ||
+                  test.accessControl?.allowedUsers?.some(user => user.email === userEmail);
+    }
+
+    // Determine if registration is required
     const requiresRegistration = test.type === 'assessment' && !existingRegistration;
     const isRegistered = !!existingRegistration;
 
@@ -1349,10 +1353,10 @@ export const checkTestRegistration = async (req, res) => {
         type: test.type,
         accessControl: {
           type: test.accessControl?.type || 'private',
-          allowedUsers: isAllowedUser ? [{
+          allowedUsers: canAccess ? [{
             email: userEmail,
-            name: test.accessControl.allowedUsers.find(u => u.email === userEmail)?.name,
-            addedAt: test.accessControl.allowedUsers.find(u => u.email === userEmail)?.addedAt
+            name: test.accessControl?.allowedUsers?.find(u => u.email === userEmail)?.name,
+            addedAt: test.accessControl?.allowedUsers?.find(u => u.email === userEmail)?.addedAt
           }] : []
         }
       },
