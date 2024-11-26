@@ -57,7 +57,8 @@ export default function SharedTest() {
           isRegistered: regResponse.isRegistered,
           message: regResponse.message,
           testType: regResponse.test?.type,
-          lastSession: regResponse.lastSession
+          lastSession: regResponse.lastSession,
+          accessControl: regResponse.test?.accessControl
         });
 
       } catch (err) {
@@ -263,19 +264,26 @@ export default function SharedTest() {
             )}
           </div>
 
-          {test.accessControl?.type === 'private' && (
+          {registrationStatus && (
             <div className="mt-4 p-4 bg-gray-50 rounded-lg">
               <h3 className="text-lg font-semibold mb-2">Access Status</h3>
-              {test.accessControl.allowedUsers?.length > 0 ? (
-                <div className="text-green-600">
-                  ✓ You are authorized to take this test
-                  <p className="text-sm text-gray-600 mt-1">
-                    Registered email: {test.accessControl.allowedUsers[0].email}
-                  </p>
-                </div>
+              {registrationStatus.canAccess ? (
+                <>
+                  <div className="text-green-600">
+                    ✓ You are authorized to take this test
+                    {registrationStatus.accessControl?.allowedUsers?.[0] && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        Registered email: {registrationStatus.accessControl.allowedUsers[0].email}
+                      </p>
+                    )}
+                  </div>
+                  {registrationStatus.message && (
+                    <p className="text-sm text-gray-600 mt-2">{registrationStatus.message}</p>
+                  )}
+                </>
               ) : (
                 <div className="text-yellow-600">
-                  ⚠ This is a private test. Please contact the test administrator for access.
+                  ⚠ {registrationStatus.message || 'This is a private test. Please contact the test administrator for access.'}
                 </div>
               )}
             </div>

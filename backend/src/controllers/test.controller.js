@@ -1291,97 +1291,83 @@ export const verifyTestByUuid = async (req, res) => {
 export const checkTestRegistration = async (req, res) => {
   try {
     const { uuid } = req.params;
+    const userEmail = req.user.email;
+    const userRole = req.user.role;
+
     const test = await Test.findOne({ uuid })
-      .populate('vendor', 'name email');
-    
+      .populate('vendor', 'name email')
+      .lean();
+
     if (!test) {
-      return res.status(404).json({ 
-        message: 'Test not found',
-        canAccess: false,
-        requiresRegistration: false
+      return res.status(404).json({
+        message: 'Test not found'
       });
     }
 
-    // Check existing registration
+    // Check authorization
+    const isAdmin = userRole === 'admin';
+    const isVendor = test.vendor._id.toString() === req.user._id.toString();
+    const isAllowedUser = test.accessControl?.allowedUsers?.some(
+      user => user.email === userEmail
+    );
+
+    // Get existing registration if any
     const existingRegistration = await TestRegistration.findOne({
       test: test._id,
       user: req.user._id
     });
 
-    // Get last completed session for assessment tests
-    let lastSession = null;
-    if (test.type === 'assessment') {
-      lastSession = await TestSession.findOne({
-        test: test._id,
-        user: req.user._id,
-        status: 'completed'
-      }).sort({ endTime: -1 });
-    }
+    // Get last session if any
+    const lastSession = await TestSession.findOne({
+      test: test._id,
+      user: req.user._id
+    }).sort({ startTime: -1 });
 
-    // First check if user is admin or vendor
-    const isAdmin = req.user.role === 'admin';
-    const isVendor = test.vendor.toString() === req.user._id.toString();
+    // Determine access and registration status
+    const canAccess = isAdmin || isVendor || isAllowedUser;
+    const requiresRegistration = test.type === 'assessment' && !existingRegistration;
+    const isRegistered = !!existingRegistration;
 
-    if (isAdmin || isVendor) {
-      return res.json({
-        canAccess: true,
-        requiresRegistration: !existingRegistration,
-        isRegistered: !!existingRegistration,
-        lastSession: lastSession,
-        message: 'You have administrative access to this test',
-        test: {
-          id: test._id,
-          uuid: test.uuid,
-          title: test.title,
-          type: test.type
-        }
-      });
-    }
-
-    // Check visibility and access type
-    const isPublic = test.accessControl.type === 'public';
-    const isPractice = test.type === 'practice';
-    const isAllowed = test.accessControl.allowedUsers?.includes(req.user._id);
-
-    // Determine if user can access based on visibility and type
-    const canAccess = isPublic || isPractice || isAllowed;
-
+    let message = '';
     if (!canAccess) {
-      return res.json({
-        canAccess: false,
-        requiresRegistration: false,
-        isRegistered: !!existingRegistration,
-        message: 'You do not have access to this test',
-        test: {
-          id: test._id,
-          uuid: test.uuid,
-          title: test.title,
-          type: test.type
-        }
-      });
+      message = 'You do not have access to this test';
+    } else if (requiresRegistration) {
+      message = 'Please register to take this test';
+    } else if (isRegistered) {
+      message = 'You are registered for this test';
     }
 
-    // User has access - return appropriate response
     return res.json({
-      canAccess: true,
-      requiresRegistration: !existingRegistration,
-      isRegistered: !!existingRegistration,
-      lastSession: lastSession,
-      message: lastSession && test.type === 'assessment' ? 
-        'You have already completed this assessment' : 
-        'You can take this test',
+      canAccess,
+      requiresRegistration,
+      isRegistered,
+      message,
       test: {
         id: test._id,
         uuid: test.uuid,
         title: test.title,
-        type: test.type
-      }
+        type: test.type,
+        accessControl: {
+          type: test.accessControl?.type || 'private',
+          allowedUsers: isAllowedUser ? [{
+            email: userEmail,
+            name: test.accessControl.allowedUsers.find(u => u.email === userEmail)?.name,
+            addedAt: test.accessControl.allowedUsers.find(u => u.email === userEmail)?.addedAt
+          }] : []
+        }
+      },
+      lastSession: lastSession ? {
+        id: lastSession._id,
+        status: lastSession.status,
+        startTime: lastSession.startTime,
+        endTime: lastSession.endTime
+      } : null
     });
 
   } catch (error) {
     console.error('Error in checkTestRegistration:', error);
-    res.status(500).json({ 
-      message: 'Error checking test access',
+    return res.status(500).json({
+      message: 'Error checking test registration',
       error: error.message
     });
   }
