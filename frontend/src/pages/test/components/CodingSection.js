@@ -929,12 +929,13 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
               )}
 
               {/* Sample Test Cases */}
-              {challenge?.testCases?.filter(test => test.showInDescription)?.length > 0 && (
+              {challenge?.testCases?.filter(test => !test.isHidden)?.length > 0 && (
                 <div className="bg-[#2d2d2d] p-3 rounded-lg">
                   <h3 className="font-medium mb-2">Sample Test Cases</h3>
                   <div className="space-y-4">
                     {challenge.testCases
-                      .filter(test => test.showInDescription)
+                      .filter(test => !test.isHidden)
+                      .slice(0, 2)  // Only take the first 2 test cases
                       .map((test, index) => (
                         <div key={index} className="space-y-2">
                           <div className="text-sm text-gray-400">Test Case {index + 1}</div>
@@ -950,6 +951,15 @@ export default function CodingSection({ challenges, answers, setAnswers, onSubmi
                               {test.output}
                             </pre>
                           </div>
+                          {/* Add explanation section */}
+                          {test.explanation && (
+                            <div className="bg-[#363636] p-2 rounded">
+                              <div className="text-gray-400 text-xs mb-1">Explanation:</div>
+                              <div className="text-gray-300 text-sm whitespace-pre-wrap">
+                                {test.explanation}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                   </div>
