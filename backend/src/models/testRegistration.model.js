@@ -18,12 +18,12 @@ const testRegistrationSchema = new mongoose.Schema({
   },
   testType: {
     type: String,
-    enum: ['practice', 'assessment'],
+    enum: ['assessment', 'practice'],
     required: true
   },
   registrationType: {
     type: String,
-    enum: ['public', 'private'],
+    enum: ['self', 'invitation'],
     required: true
   },
   registeredAt: {

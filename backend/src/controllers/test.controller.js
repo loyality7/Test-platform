@@ -2235,7 +2235,7 @@ export const registerForTest = async (req, res) => {
 
     // Check if already registered
     const existingRegistration = await TestRegistration.findOne({
-      test: test._id, // Use the MongoDB _id here
+      test: test._id,
       user: req.user._id
     });
 
@@ -2245,13 +2245,14 @@ export const registerForTest = async (req, res) => {
       });
     }
 
-    // Create registration
+    // Create registration with correct fields
     const registration = await TestRegistration.create({
-      test: test._id, // Use the MongoDB _id here
+      test: test._id,
       user: req.user._id,
       registeredAt: new Date(),
       status: 'registered',
-      registrationType: isAllowedUser ? 'invited' : 'self',
+      testType: test.type || 'assessment', // Add testType
+      registrationType: isAllowedUser ? 'invitation' : 'self', // Fix enum value
       userEmail: userEmail
     });
 
